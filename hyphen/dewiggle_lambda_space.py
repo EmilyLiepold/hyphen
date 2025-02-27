@@ -481,12 +481,6 @@ def dewiggle_lambda_space(
     def background_prototype(x):
         return np.polyval(background_prototype_pf, x)
 
-    fig, axes = plt.subplots(1)
-
-    axes.plot(med_px[good_indices], background_prototype_exact(med_px[good_indices]), label="Background Prototype")
-    axes.plot(med_px[good_indices], background_prototype(med_px[good_indices]), label="Background Prototype PF")
-
-    plt.show()
 
     print(f'T     B {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
