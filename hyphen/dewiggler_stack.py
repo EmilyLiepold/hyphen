@@ -1266,16 +1266,18 @@ def parse_yaml_arguments_and_dewiggle(yaml_files):
                 ).replace("FRAME", target_frames)
             else:
                 plot_filename = False
-            logger = logging.getLogger()
 
-            with open(log_filename, "w"):
-                pass
+            # logger = logging.getLogger()
+
+            # with open(log_filename, "w"):
+            #     pass
 
             logging.basicConfig(
                 format="%(asctime)s: %(name)s.%(funcName)s(): %(levelname)s - %(message)s",
                 datefmt="%Y-%m-%d %I:%M:%S %p",
                 filename=log_filename,
                 level=logging.INFO,
+                force=True,
             )
 
             logger.info(
