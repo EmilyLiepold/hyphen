@@ -1236,19 +1236,6 @@ def dewiggler_stack(
 
     return plot
 
-
-def yaml_layerer(yaml_files):
-
-    def generic_get(arg, default):
-        out = default
-        for yaml_file in yaml_files:
-            out = yaml_file.get(arg, out)
-
-        return out
-
-    return generic_get
-
-
 def parse_yaml_arguments_and_dewiggle(yaml_files):
 
     layered_get = yaml_layerer(yaml_files)
