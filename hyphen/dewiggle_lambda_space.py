@@ -659,8 +659,8 @@ def dewiggle_lambda_space(
             if proposed_fit_params[knob] + 1 <= max_fit_params[knob]:
                 proposed_fit_params[knob] += 1
                 try:
-                    t1 = tt()
-                    print(f'T     D {tt() - t1}; line {get_linenumber()}')
+                    # t1 = tt()
+                    # print(f'T     D {tt() - t1}; line {get_linenumber()}')
                     t1 = tt()
                     (
                         prop_xsol,
