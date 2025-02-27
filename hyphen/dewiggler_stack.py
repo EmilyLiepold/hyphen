@@ -1,6 +1,8 @@
 import logging
 import argparse
 
+from time import time as tt
+
 from astropy.io.fits import HDUList
 from astropy.io import fits
 import numpy as np
@@ -21,6 +23,12 @@ from .tracer_helpers import find_bars, infer_fractional_position
 from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
 from .yaml_helpers import ingest_yaml
 from .helpers import wigglebar, ProgressParallel
+
+from inspect import currentframe
+
+def get_linenumber():
+    cf = currentframe()
+    return cf.f_back.f_lineno
 
 logger = logging.getLogger(__name__)
 
@@ -973,6 +981,8 @@ def dewiggler_stack(
     :return: The plot object containing all diagnostics.
     """
 
+    t0 = tt()
+    print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
     logger.info("Initiating dewiggler...")
 
     frame_2d, frame_3d, frame_2d_shortname, frame_3d_shortname = load_frames(
