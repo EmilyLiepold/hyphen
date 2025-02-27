@@ -241,10 +241,10 @@ def build_wiggly_model(
         l3 = get_linenumber()
 
         dt_total = tt() - t0
-        print(f'T              E {dt0}; {dt_0 / dt_total}; line {l0}')
-        print(f'T              E {dt1}; {dt_1 / dt_total}; line {l1}')
-        print(f'T              E {dt2}; {dt_2 / dt_total}; line {l2}')
-        print(f'T              E {dt3}; {dt_3 / dt_total}; line {l3}')
+        print(f'T              E {dt0}; {dt0 / dt_total}; line {l0}')
+        print(f'T              E {dt1}; {dt1 / dt_total}; line {l1}')
+        print(f'T              E {dt2}; {dt2 / dt_total}; line {l2}')
+        print(f'T              E {dt3}; {dt3 / dt_total}; line {l3}')
 
         
         t4 = tt()
