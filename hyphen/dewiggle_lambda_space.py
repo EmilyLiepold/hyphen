@@ -784,8 +784,10 @@ def dewiggle_lambda_space(
         print(f'T     B {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
 
-        axes[3].stem(freq, np.abs(X_spec) / np.nanmax(np.abs(X_spec)), "k")
-        axes[3].stem(freq, np.abs(X_res) / np.nanmax(np.abs(X_spec)), "r")
+        freq_we_care_about = (freq[:] > -5 ) & (freq[:] < 5)
+
+        axes[3].stem(freq[freq_we_care_about], (np.abs(X_spec) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "k")
+        axes[3].stem(freq[freq_we_care_about], (np.abs(X_res) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "r")
 
         print(f'T     B {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
