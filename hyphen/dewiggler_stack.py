@@ -1196,8 +1196,6 @@ def dewiggler_stack(
 
     if perform_dewiggling:
 
-        # with tqdm_joblib(wigglebar("Dewiggling", total=len(range(len(wiggly_pixels[0]))[::diagnostic_fraction]))) as progress_bar:
-
         total_steps = len(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
         xsols = ProgressParallel(n_jobs=n_jobs, verbose=0, require="sharedmem", total=total_steps)(
             delayed(dewiggle_main_loop)(i)
@@ -1255,17 +1253,17 @@ def parse_yaml_arguments_and_dewiggle(yaml_files):
     log_filename_prototype = output_filename_prototype.replace(".fits", ".log")
     plot_filename_prototype = layered_get("plot_filename_prototype")
 
-    for target_frames in target_frames:
-        for target_detectors in target_detectors:
+    for target_frame in target_frames:
+        for target_detector in target_detectors:
 
             log_filename = log_filename_prototype.replace(
-                "DETECTOR", target_detectors
-            ).replace("FRAME", target_frames)
+                "DETECTOR", target_detector
+            ).replace("FRAME", target_frame)
 
             if plot_filename_prototype:
                 plot_filename = plot_filename_prototype.replace(
-                    "DETECTOR", target_detectors
-                ).replace("FRAME", target_frames)
+                    "DETECTOR", target_detector
+                ).replace("FRAME", target_frame)
             else:
                 plot_filename = False
 
@@ -1283,18 +1281,18 @@ def parse_yaml_arguments_and_dewiggle(yaml_files):
             )
 
             logger.info(
-                f'Beginning dewiggler task {layered_get("label", "")} on {input_3d_prototype.replace('DETECTOR', target_detectors).replace('FRAME', target_frames).split('/')[-1]}'
+                f'Beginning dewiggler task {layered_get("label", "")} on {input_3d_prototype.replace('DETECTOR', target_detector).replace('FRAME', target_frame).split('/')[-1]}'
             )
 
             dewiggler_stack(
-                input_2d_prototype.replace("DETECTOR", target_detectors).replace(
-                    "FRAME", target_frames
+                input_2d_prototype.replace("DETECTOR", target_detector).replace(
+                    "FRAME", target_frame
                 ),
-                input_3d_prototype.replace("DETECTOR", target_detectors).replace(
-                    "FRAME", target_frames
+                input_3d_prototype.replace("DETECTOR", target_detector).replace(
+                    "FRAME", target_frame
                 ),
-                output_filename_prototype.replace("DETECTOR", target_detectors).replace(
-                    "FRAME", target_frames
+                output_filename_prototype.replace("DETECTOR", target_detector).replace(
+                    "FRAME", target_frame
                 ),
                 target_pixel=layered_get("central_pixel"),
                 plot=plot_filename,
