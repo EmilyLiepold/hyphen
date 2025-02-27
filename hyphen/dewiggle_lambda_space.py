@@ -937,8 +937,8 @@ def dewiggle_lambda_space(
         ls.append(get_linenumber())
 
 
-        axes[3].stem(freq[freq_we_care_about], (np.abs(X_spec) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "k")
-        axes[3].stem(freq[freq_we_care_about], (np.abs(X_res) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "r")
+        # axes[3].stem(freq[freq_we_care_about], (np.abs(X_spec) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "k")
+        # axes[3].stem(freq[freq_we_care_about], (np.abs(X_res) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "r")
 
         axes[3].set_xlim(-freq_trim, freq_trim)
         axes[3].set_ylim(0, 1.0)
