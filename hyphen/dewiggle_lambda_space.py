@@ -467,17 +467,17 @@ def dewiggle_lambda_space(
         np.polyval(background_pf, lam) / np.polyval(continuum_model, lam)
     )
 
-    def background_prototype_exact(x):
+    def background_prototype(x):
         return (
             np.polyval(background_pf, inverse_model(x))
             / np.polyval(continuum_model, inverse_model(x))
             / background_normalization
         )
 
-    background_prototype_pf = np.polyfit(med_px, background_prototype_exact(med_px), len(background_pf) + 3)
+    # background_prototype_pf = np.polyfit(med_px, background_prototype_exact(med_px), len(background_pf) + 3)
 
-    def background_prototype(x):
-        return np.polyval(background_prototype_pf, x)
+    # def background_prototype(x):
+    #     return np.polyval(background_prototype_pf, x)
 
     print(f'T     B {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
