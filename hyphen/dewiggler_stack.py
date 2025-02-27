@@ -1197,11 +1197,12 @@ def dewiggler_stack(
     if perform_dewiggling:
 
         # with tqdm_joblib(wigglebar("Dewiggling", total=len(range(len(wiggly_pixels[0]))[::diagnostic_fraction]))) as progress_bar:
-        xsols = ProgressParallel(Parallel(n_jobs=n_jobs, verbose=0, require="sharedmem")(
-            delayed(dewiggle_main_loop)(i)
-            for i in wigglebar(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
-        ))
-        d.dump(xsols, open(xsol_fn, "wb"))
+        with ProgressParallel as parallel:
+            xsols = parallel(n_jobs=n_jobs, verbose=0, require="sharedmem")(
+                delayed(dewiggle_main_loop)(i)
+                for i in wigglebar(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
+            )
+            d.dump(xsols, open(xsol_fn, "wb"))
 
     xsols = d.load(open(xsol_fn, "rb"))
 
