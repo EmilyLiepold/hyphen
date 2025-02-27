@@ -476,7 +476,7 @@ def dewiggle_lambda_space(
 
     # print(background_pf)
     # exit()
-    background_prototype_pf = np.polyfit(med_px[good_indices], background_prototype_exact(med_px[good_indices]), len(background_pf) - 1)
+    background_prototype_pf = np.polyfit(med_px[good_indices], background_prototype_exact(med_px[good_indices]), len(background_pf) + 4)
 
     def background_prototype(x):
         return np.polyval(background_prototype_pf, x)
