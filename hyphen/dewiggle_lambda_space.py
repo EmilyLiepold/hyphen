@@ -933,6 +933,10 @@ def dewiggle_lambda_space(
         # t0 = tt()
         plt.close()
 
+    print(f'T done with the ploting part {tt() - t0}; {tt() - t00}; line {get_linenumber()}')
+    t0 = tt()
+
+
     return (
         0,
         target_spectrum - normalization_constant * normalization * jwm(*xsol)(med_px),
