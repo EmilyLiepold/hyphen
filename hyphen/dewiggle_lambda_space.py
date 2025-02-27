@@ -392,12 +392,17 @@ def dewiggle_lambda_space(
         np.polyval(background_pf, lam) / np.polyval(continuum_model, lam)
     )
 
-    def background_prototype(x):
+    def background_prototype_exact(x):
         return (
             np.polyval(background_pf, inverse_model(x))
             / np.polyval(continuum_model, inverse_model(x))
             / background_normalization
         )
+    
+    background_prototype_pf = np.polyfit(med_px[good_indices], background_prototype_exact(med_px[good_indices]), len(background_pf) + 4)
+
+    def background_prototype(x):
+        return np.polyval(background_prototype_pf, x)
 
     x_vals = med_px[good_indices]
 
@@ -707,12 +712,15 @@ def dewiggle_lambda_space(
         n = len(X_spec)
         dt = fine_x_grid[1] - fine_x_grid[0]
         freq = np.fft.fftfreq(n, d=dt)
-        # Y = 0 * X
 
-        axes[3].stem(freq, np.abs(X_spec) / np.nanmax(np.abs(X_spec)), "k")
-        axes[3].stem(freq, np.abs(X_res) / np.nanmax(np.abs(X_spec)), "r")
+        freq_trim = 5
 
-        axes[3].set_xlim(-5, 5)
+        freq_we_care_about = (freq[:] > -freq_trim ) & (freq[:] < freq_trim)
+
+        axes[3].stem(freq[freq_we_care_about], (np.abs(X_spec) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "k")
+        axes[3].stem(freq[freq_we_care_about], (np.abs(X_res) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "r")
+
+        axes[3].set_xlim(-freq_trim, freq_trim)
         axes[3].set_ylim(0, 1.0)
         # axes[3].set_yscale('log')
         axes[4].set_ylabel("Flux, arbitrary")
