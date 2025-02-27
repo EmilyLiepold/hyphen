@@ -1,13 +1,12 @@
 import logging
+import argparse
+
 from astropy.io.fits import HDUList
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.spatial import ConvexHull
-from .tracer_helpers import find_bars, infer_fractional_position
-from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
-from .yaml_helpers import validate_yaml_arguments, yaml_layerer
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
 from astropy import units as u
@@ -16,9 +15,11 @@ from jwst.assign_wcs import nrs_ifu_wcs
 from joblib import Parallel, delayed
 import dill as d
 from scipy.interpolate import interp1d
-import argparse
 import yaml
 
+from .tracer_helpers import find_bars, infer_fractional_position
+from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
+from .yaml_helpers import validate_yaml_arguments, yaml_layerer
 
 logger = logging.getLogger(__name__)
 
