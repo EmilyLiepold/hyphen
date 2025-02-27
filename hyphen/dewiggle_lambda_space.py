@@ -227,24 +227,33 @@ def build_wiggly_model(
         # print(f'T              E {dt2}; line {l2}')
         t3 = tt()
 
-        to_return = alpha * (   
-            1
-            + args[alpha_order + beta_order + gamma_order + 3]
-            * jwm(x, envelope_only=False)
-        ) + gamma * background_prototype(x) * (
-            1
-            + args[alpha_order + beta_order + gamma_order + 4]
-            * jwm(x, envelope_only=False)
-        )
+        jwm_term = jwm(x, envelope_only=False)
 
         dt3 = tt() - t3
         l3 = get_linenumber()
+        # print(f'T              E {dt2}; line {l2}')
+        t4 = tt()
+
+
+        to_return = alpha * (   
+            1
+            + args[alpha_order + beta_order + gamma_order + 3]
+            * jwm_term
+        ) + gamma * background_prototype(x) * (
+            1
+            + args[alpha_order + beta_order + gamma_order + 4]
+            * jwm_term
+        )
+
+        dt4 = tt() - t4
+        l4 = get_linenumber()
 
         dt_total = tt() - t0
         print(f'T              E {dt0}; {dt0 / dt_total}; line {l0}')
         print(f'T              E {dt1}; {dt1 / dt_total}; line {l1}')
         print(f'T              E {dt2}; {dt2 / dt_total}; line {l2}')
         print(f'T              E {dt3}; {dt3 / dt_total}; line {l3}')
+        print(f'T              E {dt4}; {dt4 / dt_total}; line {l4}')
 
         
         t4 = tt()
