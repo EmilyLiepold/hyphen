@@ -272,6 +272,10 @@ def build_wiggly_model(
         print(f'T              E {dt2}; {dt2 / dt_total}; line {l2}')
         print(f'T              E {dt3}; {dt3 / dt_total}; line {l3}')
         print(f'T              E {dt4}; {dt4 / dt_total}; line {l4}')
+        print(f'T              E {dt5}; {dt5 / dt_total}; line {l5}')
+        print(f'T              E {dt6}; {dt6 / dt_total}; line {l6}')
+        print(f'T              E {dt7}; {dt7 / dt_total}; line {l7}')
+        
 
         
         t4 = tt()
