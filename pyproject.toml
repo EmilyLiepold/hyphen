@@ -34,8 +34,6 @@ Homepage = "https://github.com/EmilyLiepold/Wiggles"
 # Homepage = "https://github.com/EmilyLiepold/hyphen"
 # "Bug Tracker" = "https://github.com/EmilyLiepold/hyphen/issues"
 
-[tool.setuptools]
-py-modules = ['hyphen']
 
 [tool.setuptools.dynamic]
 version = {attr = "hyphen.__version__"}
