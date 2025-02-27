@@ -419,9 +419,9 @@ def dewiggle_lambda_space(
     comparing it to the trace_model.
     """
 
-    # t0 = tt()
-    # print(f'T start of dewiggle_lambda_space {tt() - t0}; line {get_linenumber()}')
-    # t0 = tt()
+    t0 = tt()
+    print(f'T start of dewiggle_lambda_space {tt() - t0}; line {get_linenumber()}')
+    t0 = tt()
 
     normalization = np.polyval(continuum_model, lam)
     good_indices = np.isfinite(target_spectrum)
@@ -604,6 +604,9 @@ def dewiggle_lambda_space(
     # print(f'T     B {tt() - t0}; lines {prev_line}-{get_linenumber()}')
     # prev_line = get_linenumber()
     # t0 = tt()
+
+    print(f'T about to start doing fits. {tt() - t0}; line {get_linenumber()}')
+    t0 = tt()
 
     improving = True
 
