@@ -449,6 +449,7 @@ def dewiggle_lambda_space(
     xsol[1] = 1
 
     print(f'T     B {tt() - t0}; line {get_linenumber()}')
+    prev_line = get_linenumber()
     t0 = tt()
 
     reduced_x2 = 1e15
@@ -512,7 +513,8 @@ def dewiggle_lambda_space(
 
         return (xsol, xcov, x2, reduced_x2, ww, jwm)
 
-    print(f'T     B {tt() - t0}; line {get_linenumber()}')
+    print(f'T     B {tt() - t0}; lines {prev_line}-{get_linenumber()}')
+    prev_line = get_linenumber()
     t0 = tt()
 
     improving = True
@@ -817,11 +819,6 @@ def dewiggle_lambda_space(
         print(f'T     B {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
         plt.close()
-        print(f'T     B {tt() - t0}; line {get_linenumber()}')
-        t0 = tt()
-
-    print(f'T     B {tt() - t0}; line {get_linenumber()}')
-    t0 = tt()
 
     return (
         0,
