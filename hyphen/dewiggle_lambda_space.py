@@ -420,7 +420,8 @@ def dewiggle_lambda_space(
     """
 
     t0 = tt()
-    print(f'T start of dewiggle_lambda_space {tt() - t0}; line {get_linenumber()}')
+    t00 = 1.0 * t0
+    print(f'T start of dewiggle_lambda_space {tt() - t0}; {tt() - t00}; line {get_linenumber()}')
     t0 = tt()
 
     normalization = np.polyval(continuum_model, lam)
@@ -605,7 +606,7 @@ def dewiggle_lambda_space(
     # prev_line = get_linenumber()
     # t0 = tt()
 
-    print(f'T about to start doing fits. {tt() - t0}; line {get_linenumber()}')
+    print(f'T about to start doing fits. {tt() - t0}; {tt() - t00}; line {get_linenumber()}')
     t0 = tt()
 
     improving = True
@@ -723,7 +724,7 @@ def dewiggle_lambda_space(
     # t0 = tt()
     print(f'T  Dtot {total_proposal_improvement_time}')
 
-    print(f'T done with the fitting part {tt() - t0}; line {get_linenumber()}')
+    print(f'T done with the fitting part {tt() - t0}; {tt() - t00}; line {get_linenumber()}')
     t0 = tt()
     logger.info("Fitting complete. Now to plotting. ")
     # logger.info(f'{fit_params}')
