@@ -1,4 +1,5 @@
 import logging
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -28,3 +29,24 @@ def yaml_layerer(yaml_files):
         return out
 
     return generic_get
+
+def ingest_yaml(yaml_file, target_function, target_step_type, default_options = {}, necessary_arguments=()):
+    with open(yaml_file, "r") as file:
+        docs = [dict(d) for d in yaml.safe_load_all(file)]
+        generic_args = {}
+        for doc in docs:
+            if "step_type" not in doc.keys():
+                continue
+            if doc["step_type"] == "generic":
+                generic_args = doc
+                continue
+            if doc["step_type"] == target_step_type:
+                if not validate_yaml_arguments(
+                    [generic_args, doc],
+                    necessary_arguments=necessary_arguments,
+                ):
+                    continue
+
+                print(f'Beginning step {doc["label"]}')
+                ## This step is a frame merger. We should call the frame merger function.
+                target_function([default_options, generic_args, doc])

@@ -19,7 +19,7 @@ import yaml
 
 from .tracer_helpers import find_bars, infer_fractional_position
 from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
-from .yaml_helpers import validate_yaml_arguments, yaml_layerer
+from .yaml_helpers import validate_yaml_arguments, yaml_layerer, ingest_yaml
 from .helpers import wigglebar, tqdm_joblib
 
 logger = logging.getLogger(__name__)
@@ -1383,31 +1383,13 @@ default_options = {
 
 def dewiggler_wrapper(yaml_file):
 
-    with open(yaml_file, "r") as file:
-        docs = [dict(d) for d in yaml.safe_load_all(file)]
-        generic_args = {}
-        for doc in docs:
-            if "step_type" not in doc.keys():
-                continue
-            if doc["step_type"] == "generic":
-                generic_args = doc
-                continue
-            if doc["step_type"] == "dewiggle":
-                if not validate_yaml_arguments(
-                    [generic_args, doc],
-                    necessary_arguments=[
+    ingest_yaml(yaml_file, parse_yaml_arguments_and_dewiggle, "dewiggle", default_options=default_options,necessary_arguments=(
                         "label",
                         "input_2d_filename_prototype",
                         "input_3d_filename_prototype",
                         "output_filename_prototype",
-                        "target_frames",
-                    ],
-                ):
-                    continue
-
-                print(f'Beginning step {doc["label"]}')
-                ## This step is a frame merger. We should call the frame merger function.
-                parse_yaml_arguments_and_dewiggle([default_options, generic_args, doc])
+                        "target_frames"),
+                    )
 
     return
 
