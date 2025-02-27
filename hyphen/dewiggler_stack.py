@@ -1198,7 +1198,8 @@ def dewiggler_stack(
 
         # with tqdm_joblib(wigglebar("Dewiggling", total=len(range(len(wiggly_pixels[0]))[::diagnostic_fraction]))) as progress_bar:
 
-        xsols = ProgressParallel(n_jobs=n_jobs, verbose=0, require="sharedmem")(
+        total_steps = len(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
+        xsols = ProgressParallel(n_jobs=n_jobs, verbose=0, require="sharedmem", total=total_steps)(
             delayed(dewiggle_main_loop)(i)
             for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
         )
