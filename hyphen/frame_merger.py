@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import yaml
 
-from .yaml_helpers import validate_yaml_arguments, yaml_layerer
+from .yaml_helpers import validate_yaml_arguments, yaml_layerer, ingest_yaml
 from .helpers import wigglebar
 
 logger = logging.getLogger(__name__)
@@ -606,30 +606,12 @@ default_options = {
 
 def frame_merge_wrapper(yaml_file):
 
-    with open(yaml_file, "r") as file:
-        docs = yaml.safe_load_all(file)
-        generic_args = {}
-        for doc in docs:
-            if "step_type" not in doc.keys():
-                continue
-            if doc["step_type"] == "generic":
-                generic_args = dict(doc)
-                continue
-            if doc["step_type"] == "merge":
-                if not validate_yaml_arguments(
-                    [default_options, generic_args, doc],
-                    necessary_arguments=[
+    ingest_yaml(yaml_file, parse_yaml_arguments_and_merge, "merge", default_options=default_options, necessary_arguments=(
                         "label",
                         "input_filename_prototype",
                         "output_filename",
                         "target_frames",
-                    ],
-                ):
-                    continue
-
-                print(f'Beginning step {doc["label"]}')
-                # This step is a frame merger. We should call the frame merger function.
-                parse_yaml_arguments_and_merge([default_options, generic_args, doc])
+                    ))
 
     return
 
