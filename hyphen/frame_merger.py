@@ -5,10 +5,10 @@ import numpy as np
 from astropy.io import fits
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from tqdm import tqdm
 import yaml
 
 from .yaml_helpers import validate_yaml_arguments, yaml_layerer
+from .helpers import wigglebar
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +208,7 @@ def build_big_spectra_figure(
 
     fig, axes = plt.subplots(1, figsize=(width, height))
 
-    for j in tqdm(range(number_to_plot)):
+    for j in wigglebar(range(number_to_plot)):
 
         norm_val = np.nanmedian(spectra[j])
         normed_flux = spectra[j] / norm_val
@@ -481,7 +481,7 @@ def frame_merge(
             ).T,
         )
 
-        for j in tqdm(range(number_within_target_radius)):
+        for j in wigglebar(range(number_within_target_radius)):
             build_merge_per_spaxel_diagnostics(
                 pdf,
                 raw_fluxes[:, :, flat_x[rsort[j]], flat_y[rsort[j]]],
