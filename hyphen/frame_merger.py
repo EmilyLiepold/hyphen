@@ -601,13 +601,15 @@ default_options = {
     "mask_gap_union": True,
 }
 
+necessary_arguments = ('label', 'input_filename_prototype', 'output_filename', 'target_frames')
+
+step = {'target_step_type': 'merge',
+                  'necessary_arguments': necessary_arguments,
+                  'default_options': default_options, 'target_function': parse_yaml_arguments_and_merge}
 
 def frame_merge_wrapper(yaml_file):
 
-    ingest_yaml(yaml_file,
-                [{'target_step_type': 'merge',
-                  'necessary_arguments': ['label', 'input_filename_prototype', 'output_filename', 'target_frames'],
-                  'default_options': default_options, 'target_function': parse_yaml_arguments_and_merge}])
+    ingest_yaml(yaml_file,[step])
 
     return
 

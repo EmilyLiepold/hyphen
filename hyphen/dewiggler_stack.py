@@ -1367,19 +1367,20 @@ default_options = {
     },
 }
 
-
-def dewiggler_wrapper(yaml_file):
-
-    ingest_yaml(yaml_file,
-                [{'target_step_type': 'dewiggle',
-                  'target_function': parse_yaml_arguments_and_dewiggle,
-                  'default_options': default_options,
-                  'necessary_arguments': (
-                        "label",
+necessary_arguments = ("label",
                         "input_2d_filename_prototype",
                         "input_3d_filename_prototype",
                         "output_filename_prototype",
-                        "target_frames")}])
+                        "target_frames")
+
+step = {'target_step_type': 'dewiggle',
+                  'target_function': parse_yaml_arguments_and_dewiggle,
+                  'default_options': default_options,
+                  'necessary_arguments': necessary_arguments}
+
+def dewiggler_wrapper(yaml_file):
+
+    ingest_yaml(yaml_file,[step])
 
     return
 
