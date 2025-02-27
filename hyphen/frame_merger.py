@@ -604,12 +604,10 @@ default_options = {
 
 def frame_merge_wrapper(yaml_file):
 
-    ingest_yaml(yaml_file, parse_yaml_arguments_and_merge, "merge", default_options=default_options, necessary_arguments=(
-                        "label",
-                        "input_filename_prototype",
-                        "output_filename",
-                        "target_frames",
-                    ))
+    ingest_yaml(yaml_file,
+                [{'target_step_type': 'merge',
+                  'necessary_arguments': ['label', 'input_filename_prototype', 'output_filename', 'target_frames'],
+                  'default_options': default_options, 'target_function': parse_yaml_arguments_and_merge}])
 
     return
 

@@ -30,7 +30,8 @@ def yaml_layerer(yaml_files):
 
     return generic_get
 
-def ingest_yaml(yaml_file, target_function, target_step_type, default_options = {}, necessary_arguments=()):
+def ingest_yaml(yaml_file, targets = []):
+
     with open(yaml_file, "r") as file:
         docs = [dict(d) for d in yaml.safe_load_all(file)]
         generic_args = {}
@@ -40,13 +41,26 @@ def ingest_yaml(yaml_file, target_function, target_step_type, default_options = 
             if doc["step_type"] == "generic":
                 generic_args = doc
                 continue
-            if doc["step_type"] == target_step_type:
-                if not validate_yaml_arguments(
-                    [generic_args, doc],
-                    necessary_arguments=necessary_arguments,
-                ):
-                    continue
 
-                print(f'Beginning step {doc["label"]}')
-                
-                target_function(yaml_layerer([default_options, generic_args, doc]))
+            for t in targets:
+                if doc["step_type"] == t['target_step_type']:
+                    necessary_arguments = t.get('necessary_arguments',[])
+                    default_options = t.get('default_options',{})
+                    target_function = t.get('target_function')
+
+                    if not validate_yaml_arguments(
+                        [generic_args, doc],
+                        necessary_arguments=necessary_arguments,
+                    ):
+                        continue
+
+                    print(f'Beginning step {doc["label"]}')
+                    
+                    target_function(yaml_layerer([default_options, generic_args, doc]))
+
+
+
+                if t not in doc.keys():
+                    doc[t] = target_parameters[t]
+                    
+
