@@ -746,24 +746,49 @@ def dewiggle_lambda_space(
         spectrum_without_continuum_interpolation = interp1d(
             x_vals, spectrum_without_continuum, fill_value="extrapolate"
         )
+
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         residual_without_continuum_interpolation = interp1d(
             x_vals, residual_without_continuum, fill_value="extrapolate"
         )
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
 
         fine_x_grid = np.linspace(np.min(x_vals), np.max(x_vals), 20 * len(x_vals))
 
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         fine_grid_y_spec = spectrum_without_continuum_interpolation(fine_x_grid)
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         fine_grid_y_res = residual_without_continuum_interpolation(fine_x_grid)
 
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         X_spec = fft(fine_grid_y_spec)
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         X_res = fft(fine_grid_y_res)
         n = len(X_spec)
+
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         dt = fine_x_grid[1] - fine_x_grid[0]
+
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         freq = np.fft.fftfreq(n, d=dt)
         # Y = 0 * X
 
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
+
         axes[3].stem(freq, np.abs(X_spec) / np.nanmax(np.abs(X_spec)), "k")
         axes[3].stem(freq, np.abs(X_res) / np.nanmax(np.abs(X_spec)), "r")
+
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
 
         axes[3].set_xlim(-5, 5)
         axes[3].set_ylim(0, 1.0)
