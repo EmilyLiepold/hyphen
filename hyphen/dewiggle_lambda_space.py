@@ -473,6 +473,9 @@ def dewiggle_lambda_space(
         logger.info(
             f"Performing fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
         )
+
+        print(f'T       C {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         ww, ww0, jwm, bounds = build_wiggly_model(
             envelope,
             background_prototype,
@@ -487,6 +490,9 @@ def dewiggle_lambda_space(
             prior_gamma_order=prior_gamma_order,
         )
 
+        print(f'T       C {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
+
         # logger.info(f'Initiated wiggle model with order = {order}, alpha = {alpha_order}, beta = {beta_order}, gamma = {gamma_order}')
         # print(
         #     f"Failed to fit with order = {current_order}, alpha_order = {alpha_order}, beta_order = {beta_order}, gamma_order = {gamma_order}")
@@ -498,10 +504,15 @@ def dewiggle_lambda_space(
             bounds=np.asarray(bounds),
             sigma=noise_for_fft,
         )
+
+        print(f'T       C {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         # logger.info('Fit model with order = %d', order)
         logger.debug(
             f"Successfully fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
         )
+        print(f'T       C {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         # logger.info(f'found xsol = {xsol}')
         # x2 = np.nanmean((ww(X_vals, *xsol) / y_for_fft - 1) ** 2) ** 0.5
         x2 = np.nansum(((ww(x_vals, *xsol) - y_for_fft) / noise_for_fft) ** 2)
