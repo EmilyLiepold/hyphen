@@ -22,13 +22,8 @@ import yaml
 from .tracer_helpers import find_bars, infer_fractional_position
 from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
 from .yaml_helpers import ingest_yaml
-from .helpers import wigglebar, ProgressParallel
+from .helpers import wigglebar, ProgressParallel, get_linenumber
 
-from inspect import currentframe
-
-def get_linenumber():
-    cf = currentframe()
-    return cf.f_back.f_lineno
 
 logger = logging.getLogger(__name__)
 

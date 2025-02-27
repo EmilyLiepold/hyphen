@@ -3,6 +3,7 @@ import joblib
 from tqdm import tqdm
 # from tqdm.auto import tqdm
 from joblib import Parallel
+from inspect import currentframe
 
 
 def wigglebar(*args, **kwargs):
@@ -26,3 +27,8 @@ class ProgressParallel(Parallel):
             self._pbar.total = self.n_dispatched_tasks
         self._pbar.n = self.n_completed_tasks
         self._pbar.refresh()
+
+
+def get_linenumber():
+    cf = currentframe()
+    return cf.f_back.f_lineno

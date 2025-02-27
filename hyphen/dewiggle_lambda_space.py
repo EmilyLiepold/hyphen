@@ -6,6 +6,8 @@ from numpy.fft import fft
 from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 
+from time import time as tt
+from .helpers import get_linenumber
 logger = logging.getLogger(__name__)
 
 
@@ -348,6 +350,10 @@ def dewiggle_lambda_space(
     comparing it to the trace_model.
     """
 
+    t0 = tt()
+    print(f'T     B {tt() - t0}; line {get_linenumber()}')
+    t0 = tt()
+
     normalization = np.polyval(continuum_model, lam)
     good_indices = np.isfinite(target_spectrum)
     logger.debug(
@@ -399,11 +405,17 @@ def dewiggle_lambda_space(
             / background_normalization
         )
 
+    print(f'T     B {tt() - t0}; line {get_linenumber()}')
+    t0 = tt()
+
     x_vals = med_px[good_indices]
 
     y_for_fft = normalized_spectrum[good_indices]
 
     envelope = build_envelope(np.min(x_vals), np.max(x_vals))
+
+    print(f'T     B {tt() - t0}; line {get_linenumber()}')
+    t0 = tt()
 
     if noise_spectrum is not None:
         normalized_noise_spectrum = (
@@ -421,6 +433,9 @@ def dewiggle_lambda_space(
 
     fit_params = min_fit_params.copy()
 
+    print(f'T     B {tt() - t0}; line {get_linenumber()}')
+    t0 = tt()
+
     ## Build a baseline model with the minimum fit parameters
     ww, ww0, jwm, bounds = build_wiggly_model(
         envelope,
@@ -432,6 +447,9 @@ def dewiggle_lambda_space(
     )
     xsol = [0] * len(ww0)
     xsol[1] = 1
+
+    print(f'T     B {tt() - t0}; line {get_linenumber()}')
+    t0 = tt()
 
     reduced_x2 = 1e15
     x2 = 1e15
@@ -447,6 +465,10 @@ def dewiggle_lambda_space(
         prior_beta_order=3,
         prior_gamma_order=0,
     ):
+        t0 = tt()
+        print(f'T       C {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
+
         logger.info(
             f"Performing fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
         )
@@ -485,17 +507,29 @@ def dewiggle_lambda_space(
         reduced_x2 = x2 / (len(x_vals) - len(xsol))
         logger.info(f"  Found 𝜒2 = {x2:.3f} and √𝜈  = {reduced_x2**0.5:.3f}")
 
+        print(f'T       C {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
+
         return (xsol, xcov, x2, reduced_x2, ww, jwm)
+
+    print(f'T     B {tt() - t0}; line {get_linenumber()}')
+    t0 = tt()
 
     improving = True
 
     try:
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
+
         xsol, xcov, x2, reduced_x2, ww, jwm = fit_wrapper(
             order=fit_params["order"],
             alpha_order=fit_params["alpha_order"],
             beta_order=fit_params["beta_order"],
             gamma_order=fit_params["gamma_order"],
         )
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
+
     except Exception:
 
         fit_params["alpha_order"] = 0
