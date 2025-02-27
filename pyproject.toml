@@ -39,4 +39,4 @@ Homepage = "https://github.com/EmilyLiepold/Wiggles"
 version = {attr = "hyphen.__version__"}
 
 [project.scripts]
-hyphenate = "hyphenate:hyphenate"
+hyphenate = "hyphen:hyphenate"
