@@ -569,6 +569,8 @@ def dewiggle_lambda_space(
             if proposed_fit_params[knob] + 1 <= max_fit_params[knob]:
                 proposed_fit_params[knob] += 1
                 try:
+                    print(f'T     D {tt() - t0}; line {get_linenumber()}')
+                    t0 = tt()
                     (
                         prop_xsol,
                         prop_xcov,
@@ -587,6 +589,8 @@ def dewiggle_lambda_space(
                         prior_beta_order=fit_params["beta_order"],
                         prior_gamma_order=fit_params["gamma_order"],
                     )
+                    print(f'T     D {tt() - t0}; line {get_linenumber()}')
+                    t0 = tt()
 
                     if (
                         prop_reduced_x2**0.5
@@ -605,7 +609,8 @@ def dewiggle_lambda_space(
                         )
                         improving = True
                         continue
-
+                    print(f'T     B {tt() - t0}; line {get_linenumber()}')
+                    t0 = tt()
                 except:
                     logger.debug(
                         f"Failed to fit with (O, 𝛼, 𝛽, 𝛾) = ({proposed_fit_params['order']}, {proposed_fit_params['alpha_order']}, {proposed_fit_params['beta_order']}, {proposed_fit_params['gamma_order']})"
