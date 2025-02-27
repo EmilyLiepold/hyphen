@@ -58,9 +58,5 @@ def ingest_yaml(yaml_file, targets = []):
                     
                     target_function(yaml_layerer([default_options, generic_args, doc]))
 
-
-
-                if t not in doc.keys():
-                    doc[t] = target_parameters[t]
                     
 
