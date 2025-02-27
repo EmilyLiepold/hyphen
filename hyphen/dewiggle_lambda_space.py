@@ -824,9 +824,14 @@ def dewiggle_lambda_space(
         t0 = tt()
         axes[1].set_xticks(np.arange(low_x, high_x, 1))
         axes[1].grid()
-
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         plot.savefig()
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         plt.close()
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
 
     print(f'T     B {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
