@@ -37,3 +37,6 @@ Homepage = "https://github.com/EmilyLiepold/Wiggles"
 
 [tool.setuptools.dynamic]
 version = {attr = "hyphen.__version__"}
+
+[project.scripts]
+hyphenate = "hyphenate:hyphenate"
