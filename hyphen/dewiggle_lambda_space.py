@@ -997,8 +997,12 @@ def dewiggle_lambda_space(
         # t0 = tt()
         plt.close()
 
+        ts.append(tt())
+        ls.append(get_linenumber())
+
+
         for tindex in range(len(ts) - 1):
-            print(f'T         B {ts[tindex + 1] - ts[tindex]}; {(ts[tindex + 1] - ts[0]) / (ts[-1] - ts[0])}; line {ls[tindex]}')
+            print(f'T         B {ts[tindex + 1] - ts[tindex]}; {(ts[tindex + 1] - ts[tindex]) / (ts[-1] - ts[0])}; line {ls[tindex]}')
 
     print(f'T done with the ploting part {tt() - t0}; {tt() - t00}; line {get_linenumber()}')
     t0 = tt()
