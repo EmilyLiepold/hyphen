@@ -199,17 +199,28 @@ def build_wiggly_model(
         # logger.info(f'{parse_wiggle_args(args, alpha_order, beta_order, gamma_order, order)}')
         # print()
         # print(args)
+
+        t0 = tt()
+        print(f'T              E {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
+
         jwm = build_wiggle_term(
             envelope_prototype,
             *parse_wiggle_args(args, alpha_order, beta_order, gamma_order, order),
         )
+
+        print(f'T              E {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
 
         alpha = envelope_prototype(x, *args[0 : alpha_order + 1])
         gamma = envelope_prototype(
             x, *args[alpha_order + 1 : alpha_order + gamma_order + 2]
         )
 
-        return alpha * (
+        print(f'T              E {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
+
+        to_return = alpha * (   
             1
             + args[alpha_order + beta_order + gamma_order + 3]
             * jwm(x, envelope_only=False)
@@ -218,6 +229,13 @@ def build_wiggly_model(
             + args[alpha_order + beta_order + gamma_order + 4]
             * jwm(x, envelope_only=False)
         )
+
+        print(f'T              E {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
+
+
+
+        return to_return
 
     def wwm(x, envelope_only, *args):
         # The list of args are:
@@ -239,13 +257,15 @@ def build_wiggly_model(
             x, *args[alpha_order + 1 : alpha_order + gamma_order + 2]
         )
 
-        return alpha * (
+        to_return = alpha * (
             args[alpha_order + beta_order + gamma_order + 3]
             * jwm(x, envelope_only=envelope_only)
         ) + gamma * background_prototype(x) * (
             args[alpha_order + beta_order + gamma_order + 4]
             * jwm(x, envelope_only=envelope_only)
         )
+
+        return to_return
 
     bounds = []
     initial_guess = []
