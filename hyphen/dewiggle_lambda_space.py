@@ -645,6 +645,8 @@ def dewiggle_lambda_space(
 
     # print(f'T     B {tt() - t0}; line {get_linenumber()}')
     # t0 = tt()
+
+    total_proposal_improvement_time = 0
     while improving:
 
         improving = False
@@ -681,6 +683,7 @@ def dewiggle_lambda_space(
                         prior_gamma_order=fit_params["gamma_order"],
                     )
                     print(f'T     D {tt() - t1}; line {get_linenumber()}')
+                    total_proposal_improvement_time += (tt() - t1)
                     t1= tt()
 
                     if (
@@ -711,6 +714,7 @@ def dewiggle_lambda_space(
 
     # print(f'T     B {tt() - t0}; line {get_linenumber()}')
     # t0 = tt()
+    print(f'T  Dtot {total_proposal_improvement_time}')
     logger.info("Fitting complete. Now to plotting. ")
     # logger.info(f'{fit_params}')
     # logger.info(f'{xsol}')
