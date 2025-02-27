@@ -245,16 +245,19 @@ def build_wiggly_model(
         # print(f'T              E {dt2}; line {l2}')
         t5 = tt()
 
-        tb = gamma * background_prototype(x) * (
-            1
-            + args[alpha_order + beta_order + gamma_order + 4]
-            * jwm_term
-        )
+        bb = background_prototype(x)
 
         dt5 = tt() - t5
         l5 = get_linenumber()
         # print(f'T              E {dt2}; line {l2}')
         t6 = tt()
+
+        tb = gamma * bb * (
+            1
+            + args[alpha_order + beta_order + gamma_order + 4]
+            * jwm_term
+        )
+
 
         dt6 = tt() - t6
         l6 = get_linenumber()
