@@ -731,6 +731,11 @@ def dewiggle_lambda_space(
     # logger.info(f'{xsol}')
     if plot:
 
+        ts = []
+        ls = []
+        ts.append(tt())
+        ls.append(get_linenumber())
+        
         envelope_args, wiggle_args, f = parse_wiggle_args(
             xsol,
             fit_params["alpha_order"],
@@ -738,14 +743,22 @@ def dewiggle_lambda_space(
             fit_params["gamma_order"],
             fit_params["order"],
         )
+        ts.append(tt())
+        ls.append(get_linenumber())
 
         # print(f'T     B {tt() - t0}; line {get_linenumber()}')
         # t0 = tt()
         fig, axes = plt.subplots(5, 1, figsize=(10, 16))
+        ts.append(tt())
+        ls.append(get_linenumber())
 
         fig.suptitle(
             f"{plot_label}\nx2 = {x2:.3f}, sqrt(nu) = {reduced_x2**0.5:.3f}, f = {f:.5f}"
         )
+
+        ts.append(tt())
+        ls.append(get_linenumber())
+
         # fig.suptitle(f'x2 = {x2:.2f}')
         axes[0].set_ylabel("Flux, arbitrary")
         axes[0].plot(lam, target_spectrum, label="Input Spectrum", c="k")
@@ -759,11 +772,18 @@ def dewiggle_lambda_space(
         )
         axes[0].legend(fontsize=6)
 
+        ts.append(tt())
+        ls.append(get_linenumber())
+
+
 
         axes[1].plot(x_vals, y_for_fft, label="Input Spectrum", c="k")
         axes[1].plot(x_vals, ww(x_vals, *xsol), label="Full Model", c="g")
 
         ps_continuum = envelope(x_vals, *xsol[0 : fit_params["alpha_order"] + 1])
+
+        ts.append(tt())
+        ls.append(get_linenumber())
 
         axes[1].plot(
             x_vals,
@@ -772,6 +792,10 @@ def dewiggle_lambda_space(
             c="0.5",
             linestyle=":",
         )
+
+        ts.append(tt())
+        ls.append(get_linenumber())
+
 
         gal_continuum = background_prototype(x_vals) * envelope(
             x_vals,
@@ -782,6 +806,10 @@ def dewiggle_lambda_space(
                 + 2
             ],
         )
+
+        ts.append(tt())
+        ls.append(get_linenumber())
+
 
         axes[1].plot(
             x_vals,
@@ -806,11 +834,19 @@ def dewiggle_lambda_space(
             x_vals, -jwm(*xsol)(x_vals, envelope_only=True), c="b", linestyle=":"
         )
 
+        ts.append(tt())
+        ls.append(get_linenumber())
+
+
         axes[1].plot(
             x_vals, y_for_fft - jwm(*xsol)(x_vals), label="Dewiggled Spectrum", c="r"
         )
         axes[1].legend(fontsize=6)
         axes[1].set_ylabel("Flux, normalized by central continuum")
+
+        ts.append(tt())
+        ls.append(get_linenumber())
+
 
         axes[2].set_ylabel("Residual")
 
@@ -820,6 +856,10 @@ def dewiggle_lambda_space(
             label="Residual (black - green)",
             c="r",
         )
+
+        ts.append(tt())
+        ls.append(get_linenumber())
+
 
         spectrum_without_continuum = y_for_fft - ps_continuum - gal_continuum
         residual_without_continuum = (
@@ -833,6 +873,10 @@ def dewiggle_lambda_space(
             c="k",
         )
 
+        ts.append(tt())
+        ls.append(get_linenumber())
+
+
         ax_ylim = np.nanmax(np.abs(axes[2].get_ylim()))
         axes[2].set_ylim(-ax_ylim, ax_ylim)
 
@@ -844,6 +888,10 @@ def dewiggle_lambda_space(
 
         # axes[3].plot(X_vals, residual_without_continuum, label="Wiggle without continuum", c="b")
 
+        ts.append(tt())
+        ls.append(get_linenumber())
+
+
         spectrum_without_continuum_interpolation = interp1d(
             x_vals, spectrum_without_continuum, fill_value="extrapolate"
         )
@@ -852,16 +900,32 @@ def dewiggle_lambda_space(
             x_vals, residual_without_continuum, fill_value="extrapolate"
         )
 
+        ts.append(tt())
+        ls.append(get_linenumber())
+
+
         fine_x_grid = np.linspace(np.min(x_vals), np.max(x_vals), 20 * len(x_vals))
+
+        ts.append(tt())
+        ls.append(get_linenumber())
 
         fine_grid_y_spec = spectrum_without_continuum_interpolation(fine_x_grid)
         fine_grid_y_res = residual_without_continuum_interpolation(fine_x_grid)
+
+        ts.append(tt())
+        ls.append(get_linenumber())
 
         X_spec = fft(fine_grid_y_spec)
         X_res = fft(fine_grid_y_res)
         n = len(X_spec)
 
+        ts.append(tt())
+        ls.append(get_linenumber())
+
         dt = fine_x_grid[1] - fine_x_grid[0]
+
+        ts.append(tt())
+        ls.append(get_linenumber())
 
         freq = np.fft.fftfreq(n, d=dt)
 
@@ -932,6 +996,9 @@ def dewiggle_lambda_space(
         # print(f'T     B {tt() - t0}; line {get_linenumber()}')
         # t0 = tt()
         plt.close()
+
+        for tindex in range(len(ts) - 1):
+            print(f'T         B {ts[tindex + 1] - ts[tindex]}; {(ts[tindex + 1] - ts[0]) / (ts[-1] - ts[0])}; line {ls[tindex]}')
 
     print(f'T done with the ploting part {tt() - t0}; {tt() - t00}; line {get_linenumber()}')
     t0 = tt()
