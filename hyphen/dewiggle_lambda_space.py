@@ -550,12 +550,18 @@ def dewiggle_lambda_space(
         reduced_x2 = 1e15
         x2 = 1e15
 
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
+
     while improving:
 
         improving = False
 
         knobs_to_turn = ["order", "beta_order", "alpha_order", "gamma_order"]
         for knob in knobs_to_turn:
+
+            print(f'T     B {tt() - t0}; line {get_linenumber()}')
+            t0 = tt()
             proposed_fit_params = fit_params.copy()
 
             if proposed_fit_params[knob] + 1 <= max_fit_params[knob]:
@@ -603,6 +609,8 @@ def dewiggle_lambda_space(
                         f"Failed to fit with (O, 𝛼, 𝛽, 𝛾) = ({proposed_fit_params['order']}, {proposed_fit_params['alpha_order']}, {proposed_fit_params['beta_order']}, {proposed_fit_params['gamma_order']})"
                     )
 
+    print(f'T     B {tt() - t0}; line {get_linenumber()}')
+    t0 = tt()
     logger.info("Fitting complete. Now to plotting. ")
     # logger.info(f'{fit_params}')
     # logger.info(f'{xsol}')
@@ -802,6 +810,9 @@ def dewiggle_lambda_space(
 
         plot.savefig()
         plt.close()
+
+    print(f'T     B {tt() - t0}; line {get_linenumber()}')
+    t0 = tt()
 
     return (
         0,
