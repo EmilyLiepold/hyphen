@@ -1117,6 +1117,8 @@ def dewiggler_stack(
 
     def dewiggle_main_loop(i: int) -> None:
 
+        t0 = tt()
+        print('in wiggle loop')
         print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
 
