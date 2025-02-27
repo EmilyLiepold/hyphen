@@ -624,6 +624,8 @@ def dewiggle_lambda_space(
             fit_params["order"],
         )
 
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         fig, axes = plt.subplots(5, 1, figsize=(10, 16))
 
         fig.suptitle(
@@ -641,6 +643,10 @@ def dewiggle_lambda_space(
             c="r",
         )
         axes[0].legend(fontsize=6)
+
+
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         # axes[1].plot(lam, normalized_spectrum, label='Input Spectrum')
         # axes[1].plot(lam[good_indices], normalized_spectrum[good_indices], label='Input Spectrum')
         axes[1].plot(x_vals, y_for_fft, label="Input Spectrum", c="k")
@@ -700,6 +706,9 @@ def dewiggle_lambda_space(
         axes[1].legend(fontsize=6)
         axes[1].set_ylabel("Flux, normalized by central continuum")
 
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
+
         axes[2].set_ylabel("Residual")
 
         axes[2].plot(
@@ -732,6 +741,8 @@ def dewiggle_lambda_space(
 
         # axes[3].plot(X_vals, residual_without_continuum, label="Wiggle without continuum", c="b")
 
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         spectrum_without_continuum_interpolation = interp1d(
             x_vals, spectrum_without_continuum, fill_value="extrapolate"
         )
@@ -757,6 +768,9 @@ def dewiggle_lambda_space(
         axes[3].set_xlim(-5, 5)
         axes[3].set_ylim(0, 1.0)
         # axes[3].set_yscale('log')
+
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         axes[4].set_ylabel("Flux, arbitrary")
         axes[4].plot(lam, target_spectrum, label="Input Spectrum", c="k")
         # axes[2].plot(lam[good_indices], y_for_fft * normalization[good_indices], label='Input Spectrum',c='k')
@@ -805,6 +819,9 @@ def dewiggle_lambda_space(
         xlim = axes[1].get_xlim()
         low_x = int(np.floor(xlim[0]))
         high_x = int(np.ceil(xlim[1]))
+
+        print(f'T     B {tt() - t0}; line {get_linenumber()}')
+        t0 = tt()
         axes[1].set_xticks(np.arange(low_x, high_x, 1))
         axes[1].grid()
 
