@@ -420,7 +420,7 @@ def dewiggle_lambda_space(
     """
 
     # t0 = tt()
-    # print(f'T     B {tt() - t0}; line {get_linenumber()}')
+    # print(f'T start of dewiggle_lambda_space {tt() - t0}; line {get_linenumber()}')
     # t0 = tt()
 
     normalization = np.polyval(continuum_model, lam)
@@ -660,10 +660,11 @@ def dewiggle_lambda_space(
 
             if proposed_fit_params[knob] + 1 <= max_fit_params[knob]:
                 proposed_fit_params[knob] += 1
+                t1 = tt()
                 try:
                     # t1 = tt()
                     # print(f'T     D {tt() - t1}; line {get_linenumber()}')
-                    t1 = tt()
+                    
                     (
                         prop_xsol,
                         prop_xcov,
@@ -708,6 +709,9 @@ def dewiggle_lambda_space(
                 except:
                     # print(f'T     B {tt() - t0}; line {get_linenumber()}')
                     # t0 = tt()
+                    print(f'T    eD {tt() - t1}; line {get_linenumber()}')
+                    total_proposal_improvement_time += (tt() - t1)
+                    t1= tt()
                     logger.debug(
                         f"Failed to fit with (O, 𝛼, 𝛽, 𝛾) = ({proposed_fit_params['order']}, {proposed_fit_params['alpha_order']}, {proposed_fit_params['beta_order']}, {proposed_fit_params['gamma_order']})"
                     )
