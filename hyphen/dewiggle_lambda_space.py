@@ -474,10 +474,12 @@ def dewiggle_lambda_space(
             / background_normalization
         )
 
-    # background_prototype_pf = np.polyfit(med_px, background_prototype_exact(med_px), len(background_pf) + 3)
+    print(background_pf)
+    exit()
+    background_prototype_pf = np.polyfit(med_px, background_prototype_exact(med_px), len(background_pf))
 
-    # def background_prototype(x):
-    #     return np.polyval(background_prototype_pf, x)
+    def background_prototype(x):
+        return np.polyval(background_prototype_pf, x)
 
     print(f'T     B {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
