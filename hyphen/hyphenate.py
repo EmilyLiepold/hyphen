@@ -10,6 +10,5 @@ parser.add_argument("yaml_file", help="yaml_file")
 def hyphenate():
     print("Hyphenating...")
     args = parser.parse_args()
-
     ingest_yaml(args.yaml_file, targets=[dewiggler_step, frame_merger_step])
     print("Hyphenation complete.")
