@@ -48,5 +48,5 @@ def ingest_yaml(yaml_file, target_function, target_step_type, default_options = 
                     continue
 
                 print(f'Beginning step {doc["label"]}')
-                ## This step is a frame merger. We should call the frame merger function.
-                target_function([default_options, generic_args, doc])
+                
+                target_function(yaml_layerer([default_options, generic_args, doc]))

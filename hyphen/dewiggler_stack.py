@@ -19,7 +19,7 @@ import yaml
 
 from .tracer_helpers import find_bars, infer_fractional_position
 from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
-from .yaml_helpers import validate_yaml_arguments, yaml_layerer, ingest_yaml
+from .yaml_helpers import ingest_yaml
 from .helpers import wigglebar, ProgressParallel
 
 logger = logging.getLogger(__name__)
@@ -1236,22 +1236,20 @@ def dewiggler_stack(
 
     return plot
 
-def parse_yaml_arguments_and_dewiggle(yaml_files):
+def parse_yaml_arguments_and_dewiggle(getter):
 
-    layered_get = yaml_layerer(yaml_files)
-
-    input_2d_prototype = layered_get("input_2d_filename_prototype")
-    input_3d_prototype = layered_get("input_3d_filename_prototype")
-    output_filename_prototype = layered_get("output_filename_prototype")
-    target_detectors = layered_get("target_detectors")
-    target_frames = layered_get("target_frames")
+    input_2d_prototype = getter("input_2d_filename_prototype")
+    input_3d_prototype = getter("input_3d_filename_prototype")
+    output_filename_prototype = getter("output_filename_prototype")
+    target_detectors = getter("target_detectors")
+    target_frames = getter("target_frames")
 
     assert target_frames is not [
         ""
     ], "No target frames specified and I don't yet know how to handle that..."
 
     log_filename_prototype = output_filename_prototype.replace(".fits", ".log")
-    plot_filename_prototype = layered_get("plot_filename_prototype")
+    plot_filename_prototype = getter("plot_filename_prototype")
 
     for target_frame in target_frames:
         for target_detector in target_detectors:
@@ -1281,7 +1279,7 @@ def parse_yaml_arguments_and_dewiggle(yaml_files):
             )
 
             logger.info(
-                f'Beginning dewiggler task {layered_get("label", "")} on {input_3d_prototype.replace('DETECTOR', target_detector).replace('FRAME', target_frame).split('/')[-1]}'
+                f'Beginning dewiggler task {getter("label", "")} on {input_3d_prototype.replace('DETECTOR', target_detector).replace('FRAME', target_frame).split('/')[-1]}'
             )
 
             dewiggler_stack(
@@ -1294,36 +1292,36 @@ def parse_yaml_arguments_and_dewiggle(yaml_files):
                 output_filename_prototype.replace("DETECTOR", target_detector).replace(
                     "FRAME", target_frame
                 ),
-                target_pixel=layered_get("central_pixel"),
+                target_pixel=getter("central_pixel"),
                 plot=plot_filename,
-                dewiggling_radius=layered_get("dewiggling_radius"),
-                central_reference_spectrum_radius=layered_get(
+                dewiggling_radius=getter("dewiggling_radius"),
+                central_reference_spectrum_radius=getter(
                     "central_reference_spectrum_radius"
                 ),
-                diagnostic_fraction=layered_get("diagnostic_fraction"),
-                smooth_model_poly_order=layered_get("smooth_model_poly_order"),
-                background_reference_spectrum_radii=layered_get(
+                diagnostic_fraction=getter("diagnostic_fraction"),
+                smooth_model_poly_order=getter("smooth_model_poly_order"),
+                background_reference_spectrum_radii=getter(
                     "background_reference_spectrum_radii"
                 ),
-                fractional_residual_threshold=layered_get(
+                fractional_residual_threshold=getter(
                     "fractional_residual_threshold"
                 ),
-                fit_param_fractional_residual_improvement_threshold=layered_get(
+                fit_param_fractional_residual_improvement_threshold=getter(
                     "fit_param_fractional_residual_improvement_threshold"
                 ),
-                n_jobs=int(layered_get("n_jobs")),
-                perform_dewiggling=bool(layered_get("perform_dewiggling")),
-                target_radec=tuple(layered_get("target_radec")),
-                use_cached_wcs=bool(layered_get("use_cached_wcs")),
-                min_fit_params=layered_get("min_fit_params"),
-                max_fit_params=layered_get("max_fit_params"),
-                target_wiggle_pixels=layered_get("target_wiggly_pixels"),
-                mask_bad_fits=bool(layered_get("mask_bad_fits")),
-                slices_to_use=layered_get("slices_to_use"),
-                reference_spectra_percentile_cut=layered_get(
+                n_jobs=int(getter("n_jobs")),
+                perform_dewiggling=bool(getter("perform_dewiggling")),
+                target_radec=tuple(getter("target_radec")),
+                use_cached_wcs=bool(getter("use_cached_wcs")),
+                min_fit_params=getter("min_fit_params"),
+                max_fit_params=getter("max_fit_params"),
+                target_wiggle_pixels=getter("target_wiggly_pixels"),
+                mask_bad_fits=bool(getter("mask_bad_fits")),
+                slices_to_use=getter("slices_to_use"),
+                reference_spectra_percentile_cut=getter(
                     "reference_spectra_percentile_cut"
                 ),
-                try_different_slice_threshold=layered_get(
+                try_different_slice_threshold=getter(
                     "try_different_slice_threshold"
                 ),
             )

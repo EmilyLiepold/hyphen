@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import yaml
 
-from .yaml_helpers import validate_yaml_arguments, yaml_layerer, ingest_yaml
+from .yaml_helpers import ingest_yaml
 from .helpers import wigglebar
 
 logger = logging.getLogger(__name__)
@@ -525,14 +525,12 @@ def find_targeted_file_name(input_filenames, target_frame, target_detector):
     return None
 
 
-def parse_yaml_arguments_and_merge(yaml_files):
+def parse_yaml_arguments_and_merge(getter):
 
-    layered_get = yaml_layerer(yaml_files)
+    input_filename_prototype = getter("input_filename_prototype")
+    target_detectors = getter("target_detectors")
 
-    input_filename_prototype = layered_get("input_filename_prototype")
-    target_detectors = layered_get("target_detectors")
-
-    target_frames = layered_get("target_frames")
+    target_frames = getter("target_frames")
 
     assert target_frames is not [
         ""
@@ -548,7 +546,7 @@ def parse_yaml_arguments_and_merge(yaml_files):
         for target_frame in target_frames
     ]
 
-    output_filename = layered_get("output_filename")
+    output_filename = getter("output_filename")
 
     log_filename = output_filename.replace(".fits", ".log")
 
@@ -564,22 +562,22 @@ def parse_yaml_arguments_and_merge(yaml_files):
         level=logging.INFO,
     )
 
-    logger.info(f'Beginning frame merger task {layered_get("label", "")}')
+    logger.info(f'Beginning frame merger task {getter("label", "")}')
 
     frame_merge(
         frame_name_list,
         output_filename,
-        pixel_cut_distance=int(layered_get("pixel_cut_distance")),
-        diagnostic_plot_filename=layered_get("plot_filename"),
-        center_pixel_for_plots=layered_get("central_pixel"),
-        target_radius=float(layered_get("radius_for_diagnostics")),
-        load_frames_from_disk=bool(layered_get("force_reload_frames")),
-        nrs1_region=layered_get("nrs1_region"),
-        nrs2_region=layered_get("nrs2_region"),
-        mask_gap_union=layered_get("mask_gap_union"),
-        recompute_gaps=bool(layered_get("force_reload_gaps")),
-        gap_region=layered_get("gap_region"),
-        mask_file=layered_get("mask_filename"),
+        pixel_cut_distance=int(getter("pixel_cut_distance")),
+        diagnostic_plot_filename=getter("plot_filename"),
+        center_pixel_for_plots=getter("central_pixel"),
+        target_radius=float(getter("radius_for_diagnostics")),
+        load_frames_from_disk=bool(getter("force_reload_frames")),
+        nrs1_region=getter("nrs1_region"),
+        nrs2_region=getter("nrs2_region"),
+        mask_gap_union=getter("mask_gap_union"),
+        recompute_gaps=bool(getter("force_reload_gaps")),
+        gap_region=getter("gap_region"),
+        mask_file=getter("mask_filename"),
     )
 
     return 0
