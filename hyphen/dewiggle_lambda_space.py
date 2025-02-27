@@ -932,12 +932,22 @@ def dewiggle_lambda_space(
         freq_trim = 5
         freq_we_care_about = (freq[:] > -freq_trim  ) & (freq[:] < freq_trim)
 
+
+        ts.append(tt())
+        ls.append(get_linenumber())
+
+
         axes[3].stem(freq[freq_we_care_about], (np.abs(X_spec) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "k")
         axes[3].stem(freq[freq_we_care_about], (np.abs(X_res) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "r")
 
         axes[3].set_xlim(-freq_trim, freq_trim)
         axes[3].set_ylim(0, 1.0)
         # axes[3].set_yscale('log')
+
+
+        ts.append(tt())
+        ls.append(get_linenumber())
+
 
         axes[4].set_ylabel("Flux, arbitrary")
         axes[4].plot(lam, target_spectrum, label="Input Spectrum", c="k")
@@ -966,6 +976,11 @@ def dewiggle_lambda_space(
 
         # print(xsol, alpha_order, beta_order, gamma_order, current_order)
 
+
+        ts.append(tt())
+        ls.append(get_linenumber())
+
+
         try:
             # print(jwm(*xsol)(med_px)[good_indices])
             # print(normalization_constant)
@@ -987,6 +1002,11 @@ def dewiggle_lambda_space(
         xlim = axes[1].get_xlim()
         low_x = int(np.floor(xlim[0]))
         high_x = int(np.ceil(xlim[1]))
+
+
+        ts.append(tt())
+        ls.append(get_linenumber())
+
 
         axes[1].set_xticks(np.arange(low_x, high_x, 1))
         axes[1].grid()
