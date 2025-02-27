@@ -20,7 +20,7 @@ import yaml
 from .tracer_helpers import find_bars, infer_fractional_position
 from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
 from .yaml_helpers import validate_yaml_arguments, yaml_layerer, ingest_yaml
-from .helpers import wigglebar, tqdm_joblib
+from .helpers import wigglebar, ProgressParallel
 
 logger = logging.getLogger(__name__)
 
@@ -1196,11 +1196,11 @@ def dewiggler_stack(
 
     if perform_dewiggling:
 
-        with tqdm_joblib(wigglebar("Dewiggling", total=len(range(len(wiggly_pixels[0]))[::diagnostic_fraction]))) as progress_bar:
-            xsols = Parallel(n_jobs=n_jobs, verbose=1000, require="sharedmem")(
-                delayed(dewiggle_main_loop)(i)
-                for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
-            )
+        # with tqdm_joblib(wigglebar("Dewiggling", total=len(range(len(wiggly_pixels[0]))[::diagnostic_fraction]))) as progress_bar:
+        xsols = ProgressParallel(Parallel(n_jobs=n_jobs, verbose=0, require="sharedmem")(
+            delayed(dewiggle_main_loop)(i)
+            for i in wigglebar(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
+        ))
         d.dump(xsols, open(xsol_fn, "wb"))
 
     xsols = d.load(open(xsol_fn, "rb"))
