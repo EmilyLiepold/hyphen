@@ -981,7 +981,7 @@ def dewiggler_stack(
     :return: The plot object containing all diagnostics.
     """
 
-    t0 = tt()
+    global t0 = tt()
     print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
     logger.info("Initiating dewiggler...")
@@ -1116,6 +1116,7 @@ def dewiggler_stack(
 
     def dewiggle_main_loop(i: int) -> None:
 
+        # global t0 = tt()
         print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
 
