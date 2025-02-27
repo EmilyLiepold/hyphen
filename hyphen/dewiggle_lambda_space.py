@@ -202,7 +202,6 @@ def build_wiggly_model(
 
         t0 = tt()
         print(f'T              E {tt() - t0}; line {get_linenumber()}')
-        t0 = tt()
 
         jwm = build_wiggle_term(
             envelope_prototype,
