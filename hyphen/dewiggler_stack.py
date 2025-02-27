@@ -983,7 +983,7 @@ def dewiggler_stack(
 
     global t0
     t0 = tt()
-    print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+    print(f'T A {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
     logger.info("Initiating dewiggler...")
 
@@ -991,19 +991,19 @@ def dewiggler_stack(
         frame_2d_filename, frame_3d_filename
     )
 
-    print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+    print(f'T A {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
 
     detector = determine_detector_name(frame_2d)
 
-    print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+    print(f'T A {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
 
     frame_2d_wcs, frame_3d_wcs = get_wcs(
         frame_2d_filename, frame_3d, use_cached_wcs=use_cached_wcs
     )
 
-    print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+    print(f'T A {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
 
     axis_pixel, axis_slice, axis_spectral = get_principal_axes(frame_3d)
@@ -1012,7 +1012,7 @@ def dewiggler_stack(
 
     plot = initialize_plot(plot)
 
-    print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+    print(f'T A {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
 
     logger.info("Constructing a median image")
@@ -1028,7 +1028,7 @@ def dewiggler_stack(
 
     spaxel_distance = determine_spaxel_distances(spatial_arr, target_pixel)
 
-    print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+    print(f'T A {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
 
     build_image_map(
@@ -1083,7 +1083,7 @@ def dewiggler_stack(
         smooth_model_poly_order,
     )
 
-    print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+    print(f'T A {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
 
     logger.debug(f"Finding bar pixels in {frame_2d_shortname}")
@@ -1112,14 +1112,14 @@ def dewiggler_stack(
     if diagnostic_fraction != 1:
         logger.info(f"Only dewiggling every {diagnostic_fraction}th pixel")
 
-    print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+    print(f'T A {tt() - t0}; line {get_linenumber()}')
     t0 = tt()
 
     def dewiggle_main_loop(i: int) -> None:
 
         t0 = tt()
         print('in wiggle loop')
-        print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+        print(f'T A {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
 
         logger.info(f"Beginning dewiggling for spaxel {i+1} of {len(wiggly_pixels[0])}")
@@ -1131,7 +1131,7 @@ def dewiggler_stack(
             f'This spaxel is at ({target_index[0]}, {target_index[1]}) with R = {dist:.2f}"'
         )
 
-        print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+        print(f'T A {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
         fp = infer_fractional_position(image, target_index)
 
@@ -1161,7 +1161,7 @@ def dewiggler_stack(
             for slice_index in target_slices
         ]
 
-        print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+        print(f'T A {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
         build_spaxel_map_plot(
             plot,
@@ -1186,7 +1186,7 @@ def dewiggler_stack(
         preferred_wiggle_model = None
         preferred_dewiggled_spectrum = None
 
-        print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+        print(f'T A {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
 
         logger.debug(f"Starting the dewiggler for index {i}!")
@@ -1199,7 +1199,7 @@ def dewiggler_stack(
                 [trace_models[tindex][0], trace_models[tindex][0]],
                 [trace_models[tindex][0], trace_models[tindex][0]],
             ]
-            print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+            print(f'T A {tt() - t0}; line {get_linenumber()}')
             t0 = tt()
 
             wiggle_model, dewiggled_spectrum, x2, xsol, model_details = (
@@ -1217,7 +1217,7 @@ def dewiggler_stack(
                 )
             )
 
-            print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+            print(f'T A {tt() - t0}; line {get_linenumber()}')
             t0 = tt()
             logger.info(
                 f"Found √𝜈 = {x2**0.5:.3f}. Previous best was {base_x2**0.5:.3f}"
@@ -1228,7 +1228,7 @@ def dewiggler_stack(
                 preferred_dewiggled_spectrum = dewiggled_spectrum
 
 
-        print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+        print(f'T A {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
         if mask_bad_fits & (base_x2**0.5 > fractional_residual_threshold):
             logger.warning(
@@ -1248,14 +1248,14 @@ def dewiggler_stack(
 
     if perform_dewiggling:
 
-        print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+        print(f'T A {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
         total_steps = len(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
         xsols = ProgressParallel(n_jobs=n_jobs, verbose=0, require="sharedmem", total=total_steps)(
             delayed(dewiggle_main_loop)(i)
             for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
         )
-        print(f'TIMER: {tt() - t0}; line {get_linenumber()}')
+        print(f'T A {tt() - t0}; line {get_linenumber()}')
         t0 = tt()
         d.dump(xsols, open(xsol_fn, "wb"))
 
