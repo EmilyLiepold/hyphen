@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wiggles"
+version = "0.0.1"
+# license = "MIT"
+requires-python = ">= 3.8"
+dependencies = [
+    "numpy", 
+    "astropy", 
+    "matplotlib", 
+    "scipy", 
+    "stdatamodels", 
+    "jwst", 
+    "joblib", 
+    "dill",
+]
+authors = [
+    {name = "Emily Liepold", email = "emilyliepold@berkeley.edu"}
+]
+description = "This is code which performs de-wiggling of NIRSpec IFU Data"
+readme = {file = "README.md", content-type = "text/markdown"}
+classifiers= [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+
+[project.urls]
+Homepage = "https://github.com/EmilyLiepold/Wiggles"
+"Bug Tracker" = "https://github.com/EmilyLiepold/Wiggles/issues"
+
