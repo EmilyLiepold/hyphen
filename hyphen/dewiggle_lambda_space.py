@@ -201,23 +201,31 @@ def build_wiggly_model(
         # print(args)
 
         t0 = tt()
-        print(f'T              E {tt() - t0}; line {get_linenumber()}')
+
+        dt0 = tt() - t0
+        l0 = get_linenumber()
+        
+        t1 = tt()
 
         jwm = build_wiggle_term(
             envelope_prototype,
             *parse_wiggle_args(args, alpha_order, beta_order, gamma_order, order),
         )
 
-        print(f'T              E {tt() - t0}; line {get_linenumber()}')
-        t0 = tt()
+        dt1 = tt() - t1
+        l1 = get_linenumber()
+        # print(f'T              E {dt1}; line {l1}')
+        t2 = tt()
 
         alpha = envelope_prototype(x, *args[0 : alpha_order + 1])
         gamma = envelope_prototype(
             x, *args[alpha_order + 1 : alpha_order + gamma_order + 2]
         )
 
-        print(f'T              E {tt() - t0}; line {get_linenumber()}')
-        t0 = tt()
+        dt2 = tt() - t2
+        l2 = get_linenumber()
+        # print(f'T              E {dt2}; line {l2}')
+        t3 = tt()
 
         to_return = alpha * (   
             1
@@ -229,9 +237,17 @@ def build_wiggly_model(
             * jwm(x, envelope_only=False)
         )
 
-        print(f'T              E {tt() - t0}; line {get_linenumber()}')
-        t0 = tt()
+        dt3 = tt() - t3
+        l3 = get_linenumber()
 
+        dt_total = tt() - t0
+        print(f'T              E {dt0}; {dt_0 / dt_total}; line {l0}')
+        print(f'T              E {dt1}; {dt_1 / dt_total}; line {l1}')
+        print(f'T              E {dt2}; {dt_2 / dt_total}; line {l2}')
+        print(f'T              E {dt3}; {dt_3 / dt_total}; line {l3}')
+
+        
+        t4 = tt()
 
 
         return to_return
