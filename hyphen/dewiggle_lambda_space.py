@@ -722,6 +722,9 @@ def dewiggle_lambda_space(
     # print(f'T     B {tt() - t0}; line {get_linenumber()}')
     # t0 = tt()
     print(f'T  Dtot {total_proposal_improvement_time}')
+
+    print(f'T done with the fitting part {tt() - t0}; line {get_linenumber()}')
+    t0 = tt()
     logger.info("Fitting complete. Now to plotting. ")
     # logger.info(f'{fit_params}')
     # logger.info(f'{xsol}')
