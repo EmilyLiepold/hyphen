@@ -5,9 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.spatial import ConvexHull
-from Wiggles.tracer_helpers import find_bars, infer_fractional_position
-from Wiggles.dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
-from Wiggles.yaml_helpers import validate_yaml_arguments, yaml_layerer
+from .tracer_helpers import find_bars, infer_fractional_position
+from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
+from .yaml_helpers import validate_yaml_arguments, yaml_layerer
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
 from astropy import units as u

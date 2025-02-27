@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 dynamic = ["version"]
-name = "wiggles"
-# license = "MIT"
+name = "hyphen"
+license = "MIT"
 requires-python = ">= 3.8"
 dependencies = [
     "numpy", 
@@ -31,9 +31,11 @@ classifiers= [
 [project.urls]
 Homepage = "https://github.com/EmilyLiepold/Wiggles"
 "Bug Tracker" = "https://github.com/EmilyLiepold/Wiggles/issues"
+# Homepage = "https://github.com/EmilyLiepold/hyphen"
+# "Bug Tracker" = "https://github.com/EmilyLiepold/hyphen/issues"
 
 [tool.setuptools]
-py-modules = ['wiggles']
+py-modules = ['hyphen']
 
 [tool.setuptools.dynamic]
-version = {attr = "wiggles.__version__"}
+version = {attr = "hyphen.__version__"}

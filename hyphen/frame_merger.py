@@ -2,7 +2,7 @@ import logging
 import numpy as np
 from astropy.io import fits
 import matplotlib.pyplot as plt
-from Wiggles.yaml_helpers import validate_yaml_arguments, yaml_layerer
+from .yaml_helpers import validate_yaml_arguments, yaml_layerer
 from matplotlib.backends.backend_pdf import PdfPages
 from tqdm import tqdm
 import yaml
