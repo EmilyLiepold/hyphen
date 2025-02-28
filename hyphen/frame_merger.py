@@ -127,6 +127,7 @@ def determine_gap_edges(weights, base_fn="", recompute_gaps=False):
                 ]
             )
             np.save(f"{base_fn}gaps.npy", gap_edges)
+            gap_edges = gap_edges.T
         except Exception as e:
             assert False, f"Error {e} in gap calculation"
 
