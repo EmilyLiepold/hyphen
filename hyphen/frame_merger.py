@@ -560,6 +560,7 @@ def parse_yaml_arguments_and_merge(getter):
         datefmt="%Y-%m-%d %I:%M:%S %p",
         filename=log_filename,
         level=logging.INFO,
+        force=True,
     )
 
     logger.info(f'Beginning frame merger task {getter("label", "")}')
