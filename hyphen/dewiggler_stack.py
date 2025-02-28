@@ -1087,11 +1087,12 @@ def dewiggler_stack(
         target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
         dist = spaxel_distance[target_index[1], target_index[0]]
 
+        logger.info()
         logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        logger.info(f"Begin Dewiggling of spaxel {i+1} of {len(wiggly_pixels[0])}")
-        logger.info(f'  ({target_index[0]}, {target_index[1]})')
-        logger.info(f'  R = {dist:.2f}"')
+        logger.info(f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}")
+        logger.info(f'  ({target_index[0]}, {target_index[1]}), R = {dist:.2f}"') 
         logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        logger.info()
 
         fp = infer_fractional_position(image, target_index)
 
