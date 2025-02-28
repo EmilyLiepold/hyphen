@@ -452,9 +452,9 @@ def dewiggle_lambda_space(
         prior_beta_order=3,
         prior_gamma_order=0,
     ):
-        logger.info(
-            f"Performing fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
-        )
+        # logger.info(
+        #     f"Performing fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
+        # )
         ww, ww0, jwm, bounds = build_wiggly_model(
             envelope,
             background_prototype,
@@ -481,14 +481,14 @@ def dewiggle_lambda_space(
             sigma=noise_for_fft,
         )
         # logger.info('Fit model with order = %d', order)
-        logger.debug(
-            f"Successfully fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
-        )
+        # logger.debug(
+        #     f"Successfully fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
+        # )
         # logger.info(f'found xsol = {xsol}')
         # x2 = np.nanmean((ww(X_vals, *xsol) / y_for_fft - 1) ** 2) ** 0.5
         x2 = np.nansum(((ww(x_vals, *xsol) - y_for_fft) / noise_for_fft) ** 2)
         reduced_x2 = x2 / (len(x_vals) - len(xsol))
-        logger.info(f"  Found 𝜒2 = {x2:.3f} and √𝜈  = {reduced_x2**0.5:.3f}")
+        # logger.info(f"  Found 𝜒2 = {x2:.3f} and √𝜈  = {reduced_x2**0.5:.3f}")
 
         return (xsol, xcov, x2, reduced_x2, ww, jwm)
 
