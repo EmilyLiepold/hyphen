@@ -1089,10 +1089,17 @@ def dewiggler_stack(
 
         logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        
         inner_log_msg = f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
-        logger.info(f'~~~~~{" " * ((70 - len(inner_log_msg)) // 2)}{inner_log_msg}{" " * (70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg))}~~~~~')
+        start_gap = ((70 - len(inner_log_msg)) // 2)
+        end_gap = (70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg))
+        logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
+
         second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
-        logger.info(f'~~~~~{" " * (80 - len(second_line_msg) // 2)}{second_line_msg}{" " * (len(second_line_msg) // 2 - len(inner_log_msg))}~~~~~')
+        start_gap = ((70 - len(second_line_msg)) // 2)
+        end_gap = (70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg))
+        logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
+        
         logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
