@@ -1271,7 +1271,7 @@ def parse_yaml_arguments_and_dewiggle(getter):
             #     pass
 
             logging.basicConfig(
-                format="%(asctime)s: %(name)s.%(funcName)s(): %(levelname)s - %(message)s",
+                format="%(asctime)s: %(funcName)-18s(): %(levelname)s - %(message)s",
                 datefmt="%Y-%m-%d %I:%M:%S %p",
                 filename=log_filename,
                 level=logging.INFO,
