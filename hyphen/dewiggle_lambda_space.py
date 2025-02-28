@@ -535,7 +535,7 @@ def dewiggle_lambda_space(
             if proposed_fit_params[knob] + 1 <= max_fit_params[knob]:
                 proposed_fit_params[knob] += 1
                 logger.info(
-                            f"Fitting with (O, 𝛼, 𝛽, 𝛾) = ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
+                            f"Trying ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
                         )
                 try:
                     (
@@ -573,7 +573,7 @@ def dewiggle_lambda_space(
                         logger.info(
                             f"--- Adopting ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})")
                         improving = True
-                        continue
+                        break
 
                 except:
                     logger.info(f"--- Fit Failed ")
