@@ -400,6 +400,7 @@ def frame_merge(
     # This is kind of awkwardly done by specifying indices after sorting.
     # e.g., index 0 is the center, and 1 is neighboring
 
+    print("Doing additional Masks")
     if mask_file is not None:
         mask = open(mask_file).readlines()
         for mask_line in mask:
@@ -413,6 +414,8 @@ def frame_merge(
             weights[
                 frame_index, :, flat_x[rsort[px_index]], flat_y[rsort[px_index]]
             ] = np.nan
+
+            print(f'Masking {frame_index}: ({flat_x[rsort[px_index]]}, {flat_y[rsort[px_index]]})')
 
     # Now we want to determine whether we have data from both detectors.
     # We'll do this by checking that the product of the fluxes in broad regions in the middle of each detector are
@@ -440,6 +443,9 @@ def frame_merge(
 
     for j in range(number_within_target_radius):
         total_masked += np.sum(~have_both_sets[:, flat_x[rsort[j]], flat_y[rsort[j]]])
+        for k in range(have_both_sets.shape[0]):
+            if not have_both_sets[k, flat_x[rsort[j]], flat_y[rsort[j]]]:
+                print(f"Missing data at {k}: ({flat_x[rsort[j]]}, {flat_y[rsort[j]]})")
 
     logger.info(f"Total masked pixels = {total_masked}")
 
