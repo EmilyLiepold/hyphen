@@ -1160,7 +1160,11 @@ def dewiggler_stack(
         for tindex, target_slice in enumerate(target_slices):
             if base_x2**0.5 < try_different_slice_threshold:
                 continue
-            logger.info(f"Dewiggling using slice {target_slice + 1}")
+
+            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
+            logger.info(f"  Current √𝜈 = {base_x2**0.5:.4f} > {try_different_slice_threshold:.4f}")
+            logger.info(f"  Trying trace from slice {target_slice + 1}")
+            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
 
             model_trace = [
                 [trace_models[tindex][0], trace_models[tindex][0]],
