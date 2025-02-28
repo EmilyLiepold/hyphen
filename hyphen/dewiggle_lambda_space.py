@@ -579,11 +579,9 @@ def dewiggle_lambda_space(
                 except:
                     logger.info(f"      !!! Fit Failed !!!")
 
-    logger.info("Fitting complete. Now to plotting. ")
-    # logger.info(f'{fit_params}')
-    # logger.info(f'{xsol}')
-    if plot:
 
+    if plot:
+        logger.debug("Beginning plots")
         envelope_args, wiggle_args, f = parse_wiggle_args(
             xsol,
             fit_params["alpha_order"],
