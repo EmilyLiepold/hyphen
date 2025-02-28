@@ -1002,6 +1002,7 @@ def dewiggler_stack(
         image=image,
     )
 
+    # TODO need to change all future references to target_pixel to be [y+1, x+1] instead of [x, y]
     target_pixel = [t - 1 for t in target_pixel][::-1]
     target_wiggle_pixels = [[t - 1 for t in tp][::-1] for tp in target_wiggle_pixels]
 
