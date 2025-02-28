@@ -1267,8 +1267,8 @@ def parse_yaml_arguments_and_dewiggle(getter):
 
             # logger = logging.getLogger()
 
-            # with open(log_filename, "w"):
-            #     pass
+            with open(log_filename, "w"):
+                pass
 
             logging.basicConfig(
                 format="%(asctime)s: HEYHEY %(funcName)-18s(): %(levelname)s - %(message)s",
