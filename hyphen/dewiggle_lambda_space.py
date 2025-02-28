@@ -452,9 +452,9 @@ def dewiggle_lambda_space(
         prior_beta_order=3,
         prior_gamma_order=0,
     ):
-        logger.info(
-            f"Performing fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
-        )
+        # logger.info(
+        #     f"Performing fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
+        # )
         ww, ww0, jwm, bounds = build_wiggly_model(
             envelope,
             background_prototype,
@@ -481,14 +481,14 @@ def dewiggle_lambda_space(
             sigma=noise_for_fft,
         )
         # logger.info('Fit model with order = %d', order)
-        logger.debug(
-            f"Successfully fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
-        )
+        # logger.debug(
+        #     f"Successfully fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
+        # )
         # logger.info(f'found xsol = {xsol}')
         # x2 = np.nanmean((ww(X_vals, *xsol) / y_for_fft - 1) ** 2) ** 0.5
         x2 = np.nansum(((ww(x_vals, *xsol) - y_for_fft) / noise_for_fft) ** 2)
         reduced_x2 = x2 / (len(x_vals) - len(xsol))
-        logger.info(f"  Found 𝜒2 = {x2:.3f} and √𝜈  = {reduced_x2**0.5:.3f}")
+        # logger.info(f"  Found 𝜒2 = {x2:.3f} and √𝜈  = {reduced_x2**0.5:.3f}")
 
         return (xsol, xcov, x2, reduced_x2, ww, jwm)
 
@@ -525,12 +525,19 @@ def dewiggle_lambda_space(
 
         improving = False
 
+        logger.info(f"--------------------------------------------------------------------------------")
+        logger.info(f"Current fit parameters are (O, 𝛼, 𝛽, 𝛾) = ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})")
+        logger.info(f"  𝜒2 = {x2:.4f} and √𝜈  = {reduced_x2**0.5:.4f}")
+        logger.info(f"--------------------------------------------------------------------------------")
         knobs_to_turn = ["order", "beta_order", "alpha_order", "gamma_order"]
         for knob in knobs_to_turn:
             proposed_fit_params = fit_params.copy()
 
             if proposed_fit_params[knob] + 1 <= max_fit_params[knob]:
                 proposed_fit_params[knob] += 1
+                logger.info(
+                            f"    Trying ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
+                        )
                 try:
                     (
                         prop_xsol,
@@ -551,6 +558,8 @@ def dewiggle_lambda_space(
                         prior_gamma_order=fit_params["gamma_order"],
                     )
 
+                    logger.info(
+                            f"      𝜒2 = {prop_x2:.4f} and √𝜈  = {prop_reduced_x2**0.5:.4f}")                    
                     if (
                         prop_reduced_x2**0.5
                         < reduced_x2**0.5 - sqrt_nu_improvement_threshold
@@ -561,24 +570,18 @@ def dewiggle_lambda_space(
                         reduced_x2 = prop_reduced_x2
                         ww = prop_ww
                         jwm = prop_jwm
-                        fit_params["order"] += 1
                         fit_params = proposed_fit_params
                         logger.info(
-                            f"Found improvement with (O, 𝛼, 𝛽, 𝛾) = ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
-                        )
+                            f"      Adopting ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})")
                         improving = True
-                        continue
+                        break
 
                 except:
-                    logger.debug(
-                        f"Failed to fit with (O, 𝛼, 𝛽, 𝛾) = ({proposed_fit_params['order']}, {proposed_fit_params['alpha_order']}, {proposed_fit_params['beta_order']}, {proposed_fit_params['gamma_order']})"
-                    )
+                    logger.info(f"      !!! Fit Failed !!!")
 
-    logger.info("Fitting complete. Now to plotting. ")
-    # logger.info(f'{fit_params}')
-    # logger.info(f'{xsol}')
+
     if plot:
-
+        logger.debug("Beginning plots")
         envelope_args, wiggle_args, f = parse_wiggle_args(
             xsol,
             fit_params["alpha_order"],

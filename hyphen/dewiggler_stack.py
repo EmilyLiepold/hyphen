@@ -185,14 +185,14 @@ def determine_target_pixel(
             2 * u.micron,
         )
         target_pixel = np.asarray(
-            [int(np.round(target_pixel_3d[1])), int(np.round(target_pixel_3d[0]))]
+            [int(np.round(target_pixel_3d[0]) + 1), int(np.round(target_pixel_3d[1]) + 1)]
         )
 
     else:
         logger.warning(
             "Neither target pixel nor target RA and Dec not provided. Finding the target pixel from the peak of the median image..."
         )
-        target_pixel = np.asarray(np.where(image[:, :] == np.nanmax(image[:, :])))[:, 0]
+        target_pixel = (np.asarray(np.where(image[:, :] == np.nanmax(image[:, :])))[:, 0][::-1] + 1).astype(int)
 
     target_pixel = np.asarray(target_pixel).astype(int)
     logger.info(f"Using the target pixel {target_pixel} (slice, pixel)")
@@ -915,7 +915,7 @@ def dewiggler_stack(
     frame_2d_filename: str,
     frame_3d_filename: str,
     output_frame_filename: str,
-    target_pixel: tuple[int, int] = [-1, -1],
+    target_pixel: tuple[int, int] = (-1, -1),
     plot: object = False,
     dewiggling_radius: float = 0.5,
     central_reference_spectrum_radius: float = 0.2,
@@ -1002,6 +1002,10 @@ def dewiggler_stack(
         image=image,
     )
 
+    # TODO need to change all future references to target_pixel to be [y+1, x+1] instead of [x, y]
+    target_pixel = [t - 1 for t in target_pixel][::-1]
+    target_wiggle_pixels = [[t - 1 for t in tp][::-1] for tp in target_wiggle_pixels]
+
     spaxel_distance = determine_spaxel_distances(spatial_arr, target_pixel)
 
     build_image_map(
@@ -1084,14 +1088,26 @@ def dewiggler_stack(
 
     def dewiggle_main_loop(i: int) -> None:
 
-        logger.info(f"Beginning dewiggling for spaxel {i+1} of {len(wiggly_pixels[0])}")
-
         target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
         dist = spaxel_distance[target_index[1], target_index[0]]
 
-        logger.debug(
-            f'This spaxel is at ({target_index[0]}, {target_index[1]}) with R = {dist:.2f}"'
-        )
+        logger.info('')
+        logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        
+        inner_log_msg = f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
+        start_gap = ((70 - len(inner_log_msg)) // 2)
+        end_gap = (70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg))
+        logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
+
+        second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
+        start_gap = ((70 - len(second_line_msg)) // 2)
+        end_gap = (70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg))
+        logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
+        
+        logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        logger.info('')
 
         fp = infer_fractional_position(image, target_index)
 
@@ -1148,7 +1164,11 @@ def dewiggler_stack(
         for tindex, target_slice in enumerate(target_slices):
             if base_x2**0.5 < try_different_slice_threshold:
                 continue
-            logger.info(f"Dewiggling using slice {target_slice + 1}")
+
+            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
+            logger.info(f"  Current √𝜈 = {base_x2**0.5:.4f} > {try_different_slice_threshold:.4f}")
+            logger.info(f"  Trying trace from slice {target_slice + 1}")
+            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
 
             model_trace = [
                 [trace_models[tindex][0], trace_models[tindex][0]],
@@ -1170,9 +1190,12 @@ def dewiggler_stack(
                 )
             )
 
-            logger.info(
-                f"Found √𝜈 = {x2**0.5:.3f}. Previous best was {base_x2**0.5:.3f}"
-            )
+            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
+            logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {target_slice + 1}")
+            logger.info(f"  Previous best was {base_x2**0.5:.4f}")
+            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
+
+
             if (x2 < base_x2) or (preferred_wiggle_model is None):
                 base_x2 = x2
                 preferred_wiggle_model = wiggle_model
@@ -1187,7 +1210,7 @@ def dewiggler_stack(
         return xsol, model_details, target_index, preferred_dewiggled_spectrum
 
     if get_plot_status(plot):
-        logger.warn(
+        logger.warning(
             "Plotting is active, so defaulting to serial processing with n_jobs=1"
         )
         n_jobs = 1
@@ -1267,11 +1290,11 @@ def parse_yaml_arguments_and_dewiggle(getter):
 
             # logger = logging.getLogger()
 
-            # with open(log_filename, "w"):
-            #     pass
+            with open(log_filename, "w"):
+                pass
 
             logging.basicConfig(
-                format="%(asctime)s: %(funcName)-18s(): %(levelname)s - %(message)s",
+                format="%(asctime)s: %(funcName)-24s | %(levelname)-8s | %(message)s",
                 datefmt="%Y-%m-%d %I:%M:%S %p",
                 filename=log_filename,
                 level=logging.INFO,
