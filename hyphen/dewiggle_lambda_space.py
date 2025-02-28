@@ -531,6 +531,9 @@ def dewiggle_lambda_space(
 
             if proposed_fit_params[knob] + 1 <= max_fit_params[knob]:
                 proposed_fit_params[knob] += 1
+                logger.info(
+                            f"Fitting with (O, 𝛼, 𝛽, 𝛾) = ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
+                        )
                 try:
                     (
                         prop_xsol,
@@ -551,6 +554,8 @@ def dewiggle_lambda_space(
                         prior_gamma_order=fit_params["gamma_order"],
                     )
 
+                    logger.info(
+                            f"--- Found 𝜒2 = {prop_x2:.3f} and √𝜈  = {prop_reduced_x2**0.5:.3f}")                    
                     if (
                         prop_reduced_x2**0.5
                         < reduced_x2**0.5 - sqrt_nu_improvement_threshold
@@ -564,15 +569,13 @@ def dewiggle_lambda_space(
                         fit_params["order"] += 1
                         fit_params = proposed_fit_params
                         logger.info(
-                            f"Found improvement with (O, 𝛼, 𝛽, 𝛾) = ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
+                            f"--- Adopting these fit parameters"
                         )
                         improving = True
                         continue
 
                 except:
-                    logger.debug(
-                        f"Failed to fit with (O, 𝛼, 𝛽, 𝛾) = ({proposed_fit_params['order']}, {proposed_fit_params['alpha_order']}, {proposed_fit_params['beta_order']}, {proposed_fit_params['gamma_order']})"
-                    )
+                    logger.info(f"--- Fit Failed ")
 
     logger.info("Fitting complete. Now to plotting. ")
     # logger.info(f'{fit_params}')
