@@ -915,7 +915,7 @@ def dewiggler_stack(
     frame_2d_filename: str,
     frame_3d_filename: str,
     output_frame_filename: str,
-    target_pixel: tuple[int, int] = [-1, -1],
+    target_pixel: tuple[int, int] = (-1, -1),
     plot: object = False,
     dewiggling_radius: float = 0.5,
     central_reference_spectrum_radius: float = 0.2,
