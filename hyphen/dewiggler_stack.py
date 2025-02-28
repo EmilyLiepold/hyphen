@@ -973,6 +973,9 @@ def dewiggler_stack(
     :return: The plot object containing all diagnostics.
     """
 
+    target_pixel = [t - 1 for t in target_pixel][::-1]
+    target_wiggle_pixels = [[t - 1 for t in tp][::-1] for tp in target_wiggle_pixels]
+
     logger.info("Initiating dewiggler...")
 
     frame_2d, frame_3d, frame_2d_shortname, frame_3d_shortname = load_frames(
