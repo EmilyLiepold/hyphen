@@ -525,10 +525,10 @@ def dewiggle_lambda_space(
 
         improving = False
 
-        logger.info(f"================================================================================")
+        logger.info(f"--------------------------------------------------------------------------------")
         logger.info(f"Current fit parameters are (O, 𝛼, 𝛽, 𝛾) = ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})")
         logger.info(f"  𝜒2 = {x2:.4f} and √𝜈  = {reduced_x2**0.5:.4f}")
-        logger.info(f"================================================================================")
+        logger.info(f"--------------------------------------------------------------------------------")
         knobs_to_turn = ["order", "beta_order", "alpha_order", "gamma_order"]
         for knob in knobs_to_turn:
             proposed_fit_params = fit_params.copy()
