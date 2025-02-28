@@ -1186,9 +1186,12 @@ def dewiggler_stack(
                 )
             )
 
-            logger.info(
-                f"Found √𝜈 = {x2**0.5:.3f}. Previous best was {base_x2**0.5:.3f}"
-            )
+            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
+            logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {target_slice + 1}")
+            logger.info(f"  Previous best was {base_x2**0.5:.4f}")
+            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
+
+
             if (x2 < base_x2) or (preferred_wiggle_model is None):
                 base_x2 = x2
                 preferred_wiggle_model = wiggle_model
@@ -1203,7 +1206,7 @@ def dewiggler_stack(
         return xsol, model_details, target_index, preferred_dewiggled_spectrum
 
     if get_plot_status(plot):
-        logger.warn(
+        logger.warning(
             "Plotting is active, so defaulting to serial processing with n_jobs=1"
         )
         n_jobs = 1
