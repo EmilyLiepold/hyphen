@@ -185,14 +185,14 @@ def determine_target_pixel(
             2 * u.micron,
         )
         target_pixel = np.asarray(
-            [int(np.round(target_pixel_3d[1])), int(np.round(target_pixel_3d[0]))]
+            [int(np.round(target_pixel_3d[0]) + 1), int(np.round(target_pixel_3d[1]) + 1)]
         )
 
     else:
         logger.warning(
             "Neither target pixel nor target RA and Dec not provided. Finding the target pixel from the peak of the median image..."
         )
-        target_pixel = np.asarray(np.where(image[:, :] == np.nanmax(image[:, :])))[:, 0]
+        target_pixel = (np.asarray(np.where(image[:, :] == np.nanmax(image[:, :])))[:, 0][::-1] + 1).astype(int)
 
     target_pixel = np.asarray(target_pixel).astype(int)
     logger.info(f"Using the target pixel {target_pixel} (slice, pixel)")
@@ -973,9 +973,6 @@ def dewiggler_stack(
     :return: The plot object containing all diagnostics.
     """
 
-    target_pixel = [t - 1 for t in target_pixel][::-1]
-    target_wiggle_pixels = [[t - 1 for t in tp][::-1] for tp in target_wiggle_pixels]
-
     logger.info("Initiating dewiggler...")
 
     frame_2d, frame_3d, frame_2d_shortname, frame_3d_shortname = load_frames(
@@ -1004,6 +1001,9 @@ def dewiggler_stack(
         frame_3d_wcs=frame_3d_wcs,
         image=image,
     )
+
+    target_pixel = [t - 1 for t in target_pixel][::-1]
+    target_wiggle_pixels = [[t - 1 for t in tp][::-1] for tp in target_wiggle_pixels]
 
     spaxel_distance = determine_spaxel_distances(spatial_arr, target_pixel)
 
