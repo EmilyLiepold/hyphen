@@ -5,14 +5,33 @@ import matplotlib.pyplot as plt
 from numpy.fft import fft
 from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
 
-def build_envelope(min_x, max_x):
-    def envelope(x, *leg_coefficients):
-        mod_leg_coefficients = list(leg_coefficients[:])
-        mod_leg_coefficients[0] = 1
+def build_envelope(min_x: float, max_x: float) -> Callable:
+    """
+    Calculate the wiggle function using sine and cosine terms.
+    Builds an envelope function based on Legendre polynomials.
+
+    :param min_x: The minimum x value for rescaling.
+    :param max_x: The maximum x value for rescaling.
+    :return: A callable function that computes the envelope.
+    """
+
+    def envelope(x: float, *leg_coefficients: float) -> float:
+        """
+        Calculate the envelope function using Legendre polynomials.
+
+        Parameters:
+        x (float): The input value for which the envelope function is
+            calculated.
+        *leg_coefficients (float): Coefficients for the Legendre polynomial.
+        Returns:
+        float: The calculated value of the envelope function.
+        """
+        mod_leg_coefficients = [1.0] + list(leg_coefficients[1:])
         legendre = np.polynomial.Legendre(mod_leg_coefficients)
         rescaled_x = 2 * (x - min_x) / (max_x - min_x) - 1
         leg_values = leg_coefficients[0] * legendre(rescaled_x)
@@ -34,9 +53,9 @@ def single_wiggle(x: float, order: int, a: float, b: float, f: float) -> float:
         Typical value should be 1.0
     :return: The wiggle, evaluated at all points in x
     """
-
-    k = 2 * order * np.pi * f
-    sin_term = np.sin(k * x)
+    frequency = 2 * order * np.pi * f
+    sin_term = np.sin(frequency * x)
+    cos_term = np.cos(frequency * x)
     cos_term = np.cos(k * x)
 
     return a * sin_term + b * cos_term
@@ -253,7 +272,7 @@ def build_wiggly_model(
 
         alpha = envelope_prototype(x, *args[0 : alpha_order + 1])
         gamma = envelope_prototype(
-            x, *args[alpha_order + 1 : alpha_order + gamma_order + 2]
+            x, *args[alpha_order + 1: alpha_order + gamma_order + 2]
         )
 
         return alpha * (
