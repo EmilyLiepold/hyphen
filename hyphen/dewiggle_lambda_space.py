@@ -56,7 +56,6 @@ def single_wiggle(x: float, order: int, a: float, b: float, f: float) -> float:
     frequency = 2 * order * np.pi * f
     sin_term = np.sin(frequency * x)
     cos_term = np.cos(frequency * x)
-    cos_term = np.cos(k * x)
 
     return a * sin_term + b * cos_term
 
