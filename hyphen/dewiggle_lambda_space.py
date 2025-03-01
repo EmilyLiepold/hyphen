@@ -113,10 +113,7 @@ def build_wiggle_term(
         envelope = envelope_prototype(x, *envelope_args)
 
         # Construct and return the model
-        if envelope_only:
-            return envelope
-        else:
-            return envelope * sinusoidal_part
+        return envelope if envelope_only else envelope * sinusoidal_part
 
     return wiggle_term
 
