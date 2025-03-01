@@ -12,15 +12,14 @@ from astropy.coordinates import SkyCoord
 from astropy import units as u
 from stdatamodels.jwst.datamodels import ImageModel
 from jwst.assign_wcs import nrs_ifu_wcs
-from joblib import Parallel, delayed
+from joblib import delayed
 import dill as d
 from scipy.interpolate import interp1d
-import yaml
 
 from .tracer_helpers import find_bars, infer_fractional_position
 from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
 from .yaml_helpers import ingest_yaml
-from .helpers import wigglebar, ProgressParallel
+from .helpers import ProgressParallel
 
 logger = logging.getLogger(__name__)
 
@@ -185,14 +184,19 @@ def determine_target_pixel(
             2 * u.micron,
         )
         target_pixel = np.asarray(
-            [int(np.round(target_pixel_3d[0]) + 1), int(np.round(target_pixel_3d[1]) + 1)]
+            [
+                int(np.round(target_pixel_3d[0]) + 1),
+                int(np.round(target_pixel_3d[1]) + 1),
+            ]
         )
 
     else:
         logger.warning(
             "Neither target pixel nor target RA and Dec not provided. Finding the target pixel from the peak of the median image..."
         )
-        target_pixel = (np.asarray(np.where(image[:, :] == np.nanmax(image[:, :])))[:, 0][::-1] + 1).astype(int)
+        target_pixel = (
+            np.asarray(np.where(image[:, :] == np.nanmax(image[:, :])))[:, 0][::-1] + 1
+        ).astype(int)
 
     target_pixel = np.asarray(target_pixel).astype(int)
     logger.info(f"Using the target pixel {target_pixel} (slice, pixel)")
@@ -1091,23 +1095,33 @@ def dewiggler_stack(
         target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
         dist = spaxel_distance[target_index[1], target_index[0]]
 
-        logger.info('')
-        logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        
-        inner_log_msg = f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
-        start_gap = ((70 - len(inner_log_msg)) // 2)
-        end_gap = (70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg))
+        logger.info("")
+        logger.info(
+            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+        )
+        logger.info(
+            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+        )
+
+        inner_log_msg = (
+            f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
+        )
+        start_gap = (70 - len(inner_log_msg)) // 2
+        end_gap = 70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg)
         logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
 
         second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
-        start_gap = ((70 - len(second_line_msg)) // 2)
-        end_gap = (70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg))
+        start_gap = (70 - len(second_line_msg)) // 2
+        end_gap = 70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg)
         logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
-        
-        logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        logger.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        logger.info('')
+
+        logger.info(
+            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+        )
+        logger.info(
+            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+        )
+        logger.info("")
 
         fp = infer_fractional_position(image, target_index)
 
@@ -1165,10 +1179,16 @@ def dewiggler_stack(
             if base_x2**0.5 < try_different_slice_threshold:
                 continue
 
-            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
-            logger.info(f"  Current √𝜈 = {base_x2**0.5:.4f} > {try_different_slice_threshold:.4f}")
+            logger.info(
+                "-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~"
+            )
+            logger.info(
+                f"  Current √𝜈 = {base_x2**0.5:.4f} > {try_different_slice_threshold:.4f}"
+            )
             logger.info(f"  Trying trace from slice {target_slice + 1}")
-            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
+            logger.info(
+                "-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~"
+            )
 
             model_trace = [
                 [trace_models[tindex][0], trace_models[tindex][0]],
@@ -1190,11 +1210,14 @@ def dewiggler_stack(
                 )
             )
 
-            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
+            logger.info(
+                "-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~"
+            )
             logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {target_slice + 1}")
             logger.info(f"  Previous best was {base_x2**0.5:.4f}")
-            logger.info(f"-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~")
-
+            logger.info(
+                "-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~"
+            )
 
             if (x2 < base_x2) or (preferred_wiggle_model is None):
                 base_x2 = x2
@@ -1220,7 +1243,9 @@ def dewiggler_stack(
     if perform_dewiggling:
 
         total_steps = len(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
-        xsols = ProgressParallel(n_jobs=n_jobs, verbose=0, require="sharedmem", total=total_steps)(
+        xsols = ProgressParallel(
+            n_jobs=n_jobs, verbose=0, require="sharedmem", total=total_steps
+        )(
             delayed(dewiggle_main_loop)(i)
             for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
         )
@@ -1258,6 +1283,7 @@ def dewiggler_stack(
     frame_3d.writeto(output_frame_filename, overwrite=True)
 
     return plot
+
 
 def parse_yaml_arguments_and_dewiggle(getter):
 
@@ -1326,9 +1352,7 @@ def parse_yaml_arguments_and_dewiggle(getter):
                 background_reference_spectrum_radii=getter(
                     "background_reference_spectrum_radii"
                 ),
-                fractional_residual_threshold=getter(
-                    "fractional_residual_threshold"
-                ),
+                fractional_residual_threshold=getter("fractional_residual_threshold"),
                 fit_param_fractional_residual_improvement_threshold=getter(
                     "fit_param_fractional_residual_improvement_threshold"
                 ),
@@ -1344,9 +1368,7 @@ def parse_yaml_arguments_and_dewiggle(getter):
                 reference_spectra_percentile_cut=getter(
                     "reference_spectra_percentile_cut"
                 ),
-                try_different_slice_threshold=getter(
-                    "try_different_slice_threshold"
-                ),
+                try_different_slice_threshold=getter("try_different_slice_threshold"),
             )
 
     return 0
@@ -1390,20 +1412,25 @@ default_options = {
     },
 }
 
-necessary_arguments = ("label",
-                        "input_2d_filename_prototype",
-                        "input_3d_filename_prototype",
-                        "output_filename_prototype",
-                        "target_frames")
+necessary_arguments = (
+    "label",
+    "input_2d_filename_prototype",
+    "input_3d_filename_prototype",
+    "output_filename_prototype",
+    "target_frames",
+)
 
-step = {'target_step_type': 'dewiggle',
-                  'target_function': parse_yaml_arguments_and_dewiggle,
-                  'default_options': default_options,
-                  'necessary_arguments': necessary_arguments}
+step = {
+    "target_step_type": "dewiggle",
+    "target_function": parse_yaml_arguments_and_dewiggle,
+    "default_options": default_options,
+    "necessary_arguments": necessary_arguments,
+}
+
 
 def dewiggler_wrapper(yaml_file):
 
-    ingest_yaml(yaml_file,[step])
+    ingest_yaml(yaml_file, [step])
 
     return
 

@@ -5,7 +5,6 @@ import numpy as np
 from astropy.io import fits
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-import yaml
 
 from .yaml_helpers import ingest_yaml
 from .helpers import wigglebar
@@ -415,7 +414,9 @@ def frame_merge(
                 frame_index, :, flat_x[rsort[px_index]], flat_y[rsort[px_index]]
             ] = np.nan
 
-            logger.info(f'Masking {frame_index}: ({flat_x[rsort[px_index]]}, {flat_y[rsort[px_index]]})')
+            logger.info(
+                f"Masking {frame_index}: ({flat_x[rsort[px_index]]}, {flat_y[rsort[px_index]]})"
+            )
 
     # Now we want to determine whether we have data from both detectors.
     # We'll do this by checking that the product of the fluxes in broad regions in the middle of each detector are
@@ -445,7 +446,9 @@ def frame_merge(
         total_masked += np.sum(~have_both_sets[:, flat_x[rsort[j]], flat_y[rsort[j]]])
         for k in range(have_both_sets.shape[0]):
             if not have_both_sets[k, flat_x[rsort[j]], flat_y[rsort[j]]]:
-                logger.info(f"Missing data at {k}: ({flat_x[rsort[j]]}, {flat_y[rsort[j]]})")
+                logger.info(
+                    f"Missing data at {k}: ({flat_x[rsort[j]]}, {flat_y[rsort[j]]})"
+                )
 
     logger.info(f"Total masked pixels = {total_masked}")
 
@@ -609,15 +612,24 @@ default_options = {
     "mask_gap_union": True,
 }
 
-necessary_arguments = ('label', 'input_filename_prototype', 'output_filename', 'target_frames')
+necessary_arguments = (
+    "label",
+    "input_filename_prototype",
+    "output_filename",
+    "target_frames",
+)
 
-step = {'target_step_type': 'merge',
-                  'necessary_arguments': necessary_arguments,
-                  'default_options': default_options, 'target_function': parse_yaml_arguments_and_merge}
+step = {
+    "target_step_type": "merge",
+    "necessary_arguments": necessary_arguments,
+    "default_options": default_options,
+    "target_function": parse_yaml_arguments_and_merge,
+}
+
 
 def frame_merge_wrapper(yaml_file):
 
-    ingest_yaml(yaml_file,[step])
+    ingest_yaml(yaml_file, [step])
 
     return
 

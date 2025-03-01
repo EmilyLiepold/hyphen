@@ -7,6 +7,7 @@ import argparse
 parser = argparse.ArgumentParser(prog="hyphenate")
 parser.add_argument("yaml_file", help="yaml_file")
 
+
 def hyphenate():
     print("Hyphenating...")
     args = parser.parse_args()

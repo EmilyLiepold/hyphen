@@ -1,14 +1,22 @@
-import contextlib
-import joblib
 from tqdm import tqdm
+
 # from tqdm.auto import tqdm
 from joblib import Parallel
 
 
 def wigglebar(*args, **kwargs):
     if not args:
-        return tqdm(**kwargs, bar_format="|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]", ascii='~◊-')
-    return tqdm(*args, **kwargs, bar_format="|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]", ascii='~◊-')
+        return tqdm(
+            **kwargs,
+            bar_format="|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
+            ascii="~◊-",
+        )
+    return tqdm(
+        *args,
+        **kwargs,
+        bar_format="|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
+        ascii="~◊-",
+    )
 
 
 class ProgressParallel(Parallel):

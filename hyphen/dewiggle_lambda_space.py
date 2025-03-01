@@ -26,10 +26,12 @@ def single_wiggle(x: float, order: int, a: float, b: float, f: float) -> float:
     """
 
     :param x: This is the x value at which the wiggle is evaluated
-    :param order: This is the order of the wiggle (e.g., 1 for a first order wiggle, 2 for a second order)
+    :param order: This is the order of the wiggle (e.g., 1 for a first order
+        wiggle, 2 for a second order)
     :param a: This is the amplitude of the sin term
     :param b: This is the amplitude of the cos term
-    :param f: This is a fudge factor which alters the frequency of the wiggle. Typical value should be 1.0
+    :param f: This is a fudge factor which alters the frequency of the wiggle.
+        Typical value should be 1.0
     :return: The wiggle, evaluated at all points in x
     """
 
@@ -41,23 +43,32 @@ def single_wiggle(x: float, order: int, a: float, b: float, f: float) -> float:
 
 
 def build_wiggle_term(
-    envelope_prototype: callable, envelope_args: list, wiggle_args: list, f: float = 1
+    envelope_prototype: callable,
+    envelope_args: list,
+    wiggle_args: list,
+    f: float = 1,
 ) -> callable:
     """
 
-    :param envelope_prototype: This function defines a generic envelope. It should accept a list of x values as its
-    first argument, then a list of parameters which define the envelope
-    :param envelope_args: This is the list of parameters which define the envelope
-    :param wiggle_args: This is a list of arguments which define the wiggle. These should pairs of sin and cos
+    :param envelope_prototype: This function defines a generic envelope. It
+        should accept a list of x values as its first argument, then a list of
+        parameters which define the envelope
+    :param envelope_args: This is the list of parameters which define the
+        envelope
+    :param wiggle_args: This is a list of arguments which define the wiggle.
+        These should pairs of sin and cos
     amplitudes for each order of the wiggle.
     :param f: This is the frequency fudge factor. Nominal value should be 1.0
-    :return: A callable function which will return the wiggle model evaluated at the input x values
+    :return: A callable function which will return the wiggle model evaluated
+        at the input x values
     """
 
     wiggle_args = list(wiggle_args)
     order = len(wiggle_args) // 2
 
-    assert len(wiggle_args) % 2 == 0, "The number of wiggle arguments must be even"
+    assert len(wiggle_args) % 2 == 0, \
+        "The number of wiggle arguments must be even"
+
     assert (
         len(wiggle_args) == 2 * order
     ), "The number of wiggle arguments is not two per order..."
@@ -66,12 +77,15 @@ def build_wiggle_term(
         """
 
         :param x: A list of values where the wiggle will be evaluated
-        :param envelope_only: A flag specifying whether to return the envelope or the full model
-        :return: The wiggle model evaluated at the input x values (or the envelope if envelope_only is True)
+        :param envelope_only: A flag specifying whether to return the envelope
+        or the full model
+        :return: The wiggle model evaluated at the input x values (or the
+        envelope if envelope_only is True)
         """
         sinusoidal_part = 0 * x
 
-        # Loop through the orders of the wiggle, adding the single wiggle associated with each
+        # Loop through the orders of the wiggle, adding the single wiggle
+        # associated with each
         for i in range(order):
             sinusoidal_part += single_wiggle(
                 x, i + 1, wiggle_args[2 * i], wiggle_args[2 * i + 1], f
@@ -91,13 +105,20 @@ def build_wiggle_term(
 
 def parse_wiggle_args(args, alpha_order, beta_order, gamma_order, order):
     envelope_args = args[
-        alpha_order + gamma_order + 2 : alpha_order + beta_order + gamma_order + 3
+        alpha_order
+        + gamma_order
+        + 2:
+        alpha_order
+        + beta_order
+        + gamma_order
+        + 3
     ]
     wiggle_args = args[
         alpha_order
         + beta_order
         + gamma_order
-        + 6 : alpha_order
+        + 6:
+        alpha_order
         + beta_order
         + gamma_order
         + 6
@@ -122,20 +143,26 @@ def convert_wiggle_solution(
 
     # First, we need to parse the solution.
 
-    alpha_args = list(sol[0 : prior_alpha_order + 1]) + [0.0] * 100
+    alpha_args = list(sol[0: prior_alpha_order + 1]) + [0.0] * 100
     alpha_args = alpha_args[: target_alpha_order + 1]
 
     gamma_args = (
-        list(sol[prior_alpha_order + 1 : prior_alpha_order + prior_gamma_order + 2])
+        list(sol[prior_alpha_order + 1:
+                 prior_alpha_order + prior_gamma_order + 2])
         + [0.0] * 100
     )
     gamma_args = gamma_args[: target_gamma_order + 1]
 
     cP = sol[prior_alpha_order + prior_beta_order + prior_gamma_order + 3]
     cG = sol[prior_alpha_order + prior_beta_order + prior_gamma_order + 4]
+
     beta_args, wiggle_args, f = parse_wiggle_args(
-        sol, prior_alpha_order, prior_beta_order, prior_gamma_order, prior_order
-    )
+        sol,
+        prior_alpha_order,
+        prior_beta_order,
+        prior_gamma_order,
+        prior_order
+        )
 
     beta_args = list(beta_args) + [0.0] * 100
     beta_args = beta_args[: target_beta_order + 1]
@@ -143,7 +170,11 @@ def convert_wiggle_solution(
     wiggle_args = list(wiggle_args) + [0.0] * 100
     wiggle_args = wiggle_args[: 2 * target_order]
 
-    return np.asarray(alpha_args + gamma_args + beta_args + [cP, cG, f] + wiggle_args)
+    return np.asarray(alpha_args
+                      + gamma_args
+                      + beta_args
+                      + [cP, cG, f]
+                      + wiggle_args)
 
 
 def build_wiggly_model(
@@ -159,50 +190,38 @@ def build_wiggly_model(
     prior_beta_order=3,
     prior_gamma_order=1,
 ):
-    # if order == 0:
-    #     logger.error('Order 0 is silly, why are we here? We should not be here....')
-
-    # def jwm(x, *args, envelope_only=False):
-    #     sinusoidal_part = 0 * x
-    #     if order == 0:
-    #         logger.error('Order 0 is silly, why are we here?')
-    #     for i in range(order):
-    #         sinusoidal_part += single_wiggle(
-    #             x, i + 1, args[2 * i + 2], args[2 * i + 3], args[1]
-    #         )
-    #
-    #     leg = envelope_prototype(
-    #         x, 1, args[2 * order + 2], args[2 * order + 3], args[2 * order + 4]
-    #     )
-    #
-    #     model = leg * sinusoidal_part
-    #     if envelope_only:
-    #         return leg * args[2]
-    #     else:
-    #         return model
 
     def wm(x, *args):
         # The list of args are:
-        # args[0:alpha_order + 1] are the alpha_order + 1 coefficients which define the envelope for the PS continuum
-        # args[alpha_order + 1: alpha_order + gamma_order + 2] are the gamma_order + 1 coefficients which define the envelope for the background
-        # args[alpha_order + gamma_order + 2: alpha_order + beta_order + gamma_order + 3] are the beta_order + 1 coefficients which define the envelope for the wiggle
-        # args[alpha_order + beta_order + gamma_order + 3] is the c_P coupling parameter between the wiggle and the PS continuum
-        # args[alpha_order + beta_order + gamma_order + 4] is the c_G coupling parameter between the wiggle and the background continuum
-        # args[alpha_order + beta_order + gamma_order + 5] is the f parameter which defines the frequency of the wiggle
-        # args[alpha_order + beta_order + gamma_order + 6:alpha_order + beta_order + gamma_order + 6 + 2 * order - 1] are the 2 * order - 1 parameters which define the wiggle model. The amplitude for the first order is fixed to 1.
+        # args[0:alpha_order + 1] are the alpha_order + 1 coefficients which
+        #   define the envelope for the PS continuum
+        # args[alpha_order + 1: alpha_order + gamma_order + 2] are the
+        #   gamma_order + 1 coefficients which define the envelope for the
+        #   background
+        # args[alpha_order + gamma_order + 2: alpha_order + beta_order +
+        #   gamma_order + 3] are the beta_order + 1 coefficients which define
+        #   the envelope for the wiggle
+        # args[alpha_order + beta_order + gamma_order + 3] is the c_P coupling
+        #   parameter between the wiggle and the PS continuum
+        # args[alpha_order + beta_order + gamma_order + 4] is the c_G coupling
+        #   parameter between the wiggle and the background continuum
+        # args[alpha_order + beta_order + gamma_order + 5] is the f parameter
+        #   which defines the frequency of the wiggle
+        # args[alpha_order + beta_order + gamma_order + 6:alpha_order +
+        #   beta_order + gamma_order + 6 + 2 * order - 1] are the
+        #   2 * order - 1 parameters which define the wiggle model.
+        #   The amplitude for the first order is fixed to 1.
 
-        # print()
-        # logger.info(f'{alpha_order}, {beta_order}, {gamma_order}, {order}')
-        # logger.info(f'{args}')
-        # logger.info(f'{parse_wiggle_args(args, alpha_order, beta_order, gamma_order, order)}')
-        # print()
-        # print(args)
         jwm = build_wiggle_term(
             envelope_prototype,
-            *parse_wiggle_args(args, alpha_order, beta_order, gamma_order, order),
+            *parse_wiggle_args(args,
+                               alpha_order,
+                               beta_order,
+                               gamma_order,
+                               order),
         )
 
-        alpha = envelope_prototype(x, *args[0 : alpha_order + 1])
+        alpha = envelope_prototype(x, *args[0: alpha_order + 1])
         gamma = envelope_prototype(
             x, *args[alpha_order + 1 : alpha_order + gamma_order + 2]
         )
@@ -353,9 +372,9 @@ def dewiggle_lambda_space(
     logger.debug(
         f"The continuum model polynomial parameters are {continuum_model}",
     )
-    logger.debug(
-        f"The target_spectrum has np.nanmin = {np.nanmin(target_spectrum[good_indices])} and np.nanmax = {np.nanmax(target_spectrum[good_indices])}"
-    )
+    logger.debug("The target_spectrum has ")
+    logger.debug("    np.nanmin = {np.nanmin(target_spectrum[good_indices])}")
+    logger.debug(f" and np.nanmax = {np.nanmax(target_spectrum[good_indices])}")
 
     normalized_spectrum = target_spectrum / normalization
     logger.debug(
@@ -398,8 +417,12 @@ def dewiggle_lambda_space(
             / np.polyval(continuum_model, inverse_model(x))
             / background_normalization
         )
-    
-    background_prototype_pf = np.polyfit(med_px[good_indices], background_prototype_exact(med_px[good_indices]), len(background_pf) + 4)
+
+    background_prototype_pf = np.polyfit(
+        med_px[good_indices],
+        background_prototype_exact(med_px[good_indices]),
+        len(background_pf) + 4,
+    )
 
     def background_prototype(x):
         return np.polyval(background_prototype_pf, x)
@@ -525,10 +548,16 @@ def dewiggle_lambda_space(
 
         improving = False
 
-        logger.info(f"--------------------------------------------------------------------------------")
-        logger.info(f"Current fit parameters are (O, 𝛼, 𝛽, 𝛾) = ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})")
+        logger.info(
+            "--------------------------------------------------------------------------------"
+        )
+        logger.info(
+            f"Current fit parameters are (O, 𝛼, 𝛽, 𝛾) = ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
+        )
         logger.info(f"  𝜒2 = {x2:.4f} and √𝜈  = {reduced_x2**0.5:.4f}")
-        logger.info(f"--------------------------------------------------------------------------------")
+        logger.info(
+            "--------------------------------------------------------------------------------"
+        )
         knobs_to_turn = ["order", "beta_order", "alpha_order", "gamma_order"]
         for knob in knobs_to_turn:
             proposed_fit_params = fit_params.copy()
@@ -536,8 +565,8 @@ def dewiggle_lambda_space(
             if proposed_fit_params[knob] + 1 <= max_fit_params[knob]:
                 proposed_fit_params[knob] += 1
                 logger.info(
-                            f"    Trying ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
-                        )
+                    f"    Trying ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
+                )
                 try:
                     (
                         prop_xsol,
@@ -559,7 +588,8 @@ def dewiggle_lambda_space(
                     )
 
                     logger.info(
-                            f"      𝜒2 = {prop_x2:.4f} and √𝜈  = {prop_reduced_x2**0.5:.4f}")                    
+                        f"      𝜒2 = {prop_x2:.4f} and √𝜈  = {prop_reduced_x2**0.5:.4f}"
+                    )
                     if (
                         prop_reduced_x2**0.5
                         < reduced_x2**0.5 - sqrt_nu_improvement_threshold
@@ -572,13 +602,13 @@ def dewiggle_lambda_space(
                         jwm = prop_jwm
                         fit_params = proposed_fit_params
                         logger.info(
-                            f"      Adopting ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})")
+                            f"      Adopting ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
+                        )
                         improving = True
                         break
 
                 except:
-                    logger.info(f"      !!! Fit Failed !!!")
-
+                    logger.info("      !!! Fit Failed !!!")
 
     if plot:
         logger.debug("Beginning plots")
@@ -718,10 +748,18 @@ def dewiggle_lambda_space(
 
         freq_trim = 5
 
-        freq_we_care_about = (freq[:] > -freq_trim ) & (freq[:] < freq_trim)
+        freq_we_care_about = (freq[:] > -freq_trim) & (freq[:] < freq_trim)
 
-        axes[3].stem(freq[freq_we_care_about], (np.abs(X_spec) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "k")
-        axes[3].stem(freq[freq_we_care_about], (np.abs(X_res) / np.nanmax(np.abs(X_spec)))[freq_we_care_about], "r")
+        axes[3].stem(
+            freq[freq_we_care_about],
+            (np.abs(X_spec) / np.nanmax(np.abs(X_spec)))[freq_we_care_about],
+            "k",
+        )
+        axes[3].stem(
+            freq[freq_we_care_about],
+            (np.abs(X_res) / np.nanmax(np.abs(X_spec)))[freq_we_care_about],
+            "r",
+        )
 
         axes[3].set_xlim(-freq_trim, freq_trim)
         axes[3].set_ylim(0, 1.0)
