@@ -248,8 +248,12 @@ def convert_wiggle_solution(
 
 
 def build_wiggly_model(
-    envelope_prototype,
-    background_prototype,
+    envelope_prototype: Callable[
+        [np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]
+    ],
+    background_prototype: Callable[
+        [np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]
+    ],
     fit_orders: dict[str, int],
     prior_fit_sol: np.typing.NDArray[np.float64] | None = None,
     prior_fit_orders: dict[str, int] | None = None,
