@@ -22,9 +22,7 @@ def build_envelope(
     :return: A callable function that computes the envelope.
     """
 
-    def envelope(
-        x: np.typing.NDArray[np.float64], *leg_coefficients: float
-    ) -> np.typing.NDArray[np.float64]:
+    def envelope(x: float, *leg_coefficients: float) -> float:
         """
         Calculate the envelope function using Legendre polynomials.
 
@@ -45,9 +43,7 @@ def build_envelope(
     return envelope
 
 
-def single_wiggle(
-    x: np.typing.NDArray[np.float64], order: int, a: float, b: float, f: float
-) -> np.typing.NDArray[np.float64]:
+def single_wiggle(x: float, order: int, a: float, b: float, f: float) -> float:
     """
 
     :param x: This is the x value at which the wiggle is evaluated
@@ -67,13 +63,11 @@ def single_wiggle(
 
 
 def build_wiggle_term(
-    envelope_prototype: Callable[
-        [np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]
-    ],
-    envelope_args: list[float] | np.typing.NDArray[np.float64],
-    wiggle_args: list[float] | np.typing.NDArray[np.float64],
-    f: float = 1.0,
-) -> Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]:
+    envelope_prototype: callable,
+    envelope_args: list,
+    wiggle_args: list,
+    f: float = 1,
+) -> callable:
     """
 
     :param envelope_prototype: This function defines a generic envelope. It
@@ -99,9 +93,7 @@ def build_wiggle_term(
         len(wiggle_args) == 2 * order
     ), "The number of wiggle arguments is not two per order..."
 
-    def wiggle_term(
-        x: np.typing.NDArray[np.float64], envelope_only: bool = False
-    ) -> np.typing.NDArray[np.float64]:
+    def wiggle_term(x: float, envelope_only: bool = False) -> float:
         """
 
         :param x: A list of values where the wiggle will be evaluated
@@ -131,46 +123,28 @@ def build_wiggle_term(
     return wiggle_term
 
 
-def parse_wiggle_args(
-    args: np.typing.NDArray[np.float64] | list[float],
-    alpha_order: int,
-    beta_order: int,
-    gamma_order: int,
-    order: int,
-) -> (
-    tuple[list[float], list[float], float]
-    | tuple[np.typing.NDArray[np.float64], np.typing.NDArray[np.float64], float]
-):
-    """
-    Parses the wiggle arguments from the provided list of arguments.
-
-    Args:
-        args (list): The list of arguments to parse.
-        alpha_order (int): The order of the alpha component.
-        beta_order (int): The order of the beta component.
-        gamma_order (int): The order of the gamma component.
-        order (int): The order of the wiggle component.
-
-    Returns:
-        tuple: A tuple containing:
-            - envelope_args (list): The arguments related to the envelope.
-            - wiggle_args (list): The arguments related to the wiggle.
-            - f (any): The frequency argument.
-    """
-
-    envelope_starting_index = alpha_order + gamma_order + 2
-    envelope_ending_index = alpha_order + beta_order + gamma_order + 3
-
-    envelope_args = args[envelope_starting_index:envelope_ending_index]
-
-    wiggle_starting_index = alpha_order + beta_order + gamma_order + 6
-    wiggle_ending_index = alpha_order + beta_order + gamma_order + 6 + 2 * order
-
-    wiggle_args = args[wiggle_starting_index:wiggle_ending_index]
-
-    frequency_index = alpha_order + beta_order + gamma_order + 5
-
-    f = args[frequency_index]
+def parse_wiggle_args(args, alpha_order, beta_order, gamma_order, order):
+    envelope_args = args[
+        alpha_order
+        + gamma_order
+        + 2:
+        alpha_order
+        + beta_order
+        + gamma_order
+        + 3
+    ]
+    wiggle_args = args[
+        alpha_order
+        + beta_order
+        + gamma_order
+        + 6:
+        alpha_order
+        + beta_order
+        + gamma_order
+        + 6
+        + 2 * order
+    ]
+    f = args[alpha_order + beta_order + gamma_order + 5]
 
     if isinstance(args, np.ndarray):
         return np.asarray(envelope_args), np.asarray(wiggle_args), float(f)
@@ -259,7 +233,7 @@ def build_wiggly_model(
 
         alpha = envelope_prototype(x, *args[0 : alpha_order + 1])
         gamma = envelope_prototype(
-            x, *args[alpha_order + 1 : alpha_order + gamma_order + 2]
+            x, *args[alpha_order + 1: alpha_order + gamma_order + 2]
         )
 
         return alpha * (
