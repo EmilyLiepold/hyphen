@@ -184,7 +184,7 @@ def convert_wiggle_solution(
     padding_length: int = 100,
 ):
     """
-    Converts a wiggle solution from one set of orders to another, 
+    Converts a wiggle solution from one set of orders to another,
     with appropriate padding.
 
     Parameters:
@@ -193,7 +193,7 @@ def convert_wiggle_solution(
         corresponding to the prior solution.
     target_fit_orders (dict[str,int]): A dictionary containing the fit orders
         which the solution should be converted to.
-    padding_length (int, optional): The length of padding to apply to the 
+    padding_length (int, optional): The length of padding to apply to the
         parameters before conversion. Default is 100.
 
     Returns:
@@ -309,13 +309,22 @@ def build_wiggly_model(
 
     def wwm(x, envelope_only, *args):
         # The list of args are:
-        # args[0:alpha_order + 1] are the alpha_order + 1 coefficients which define the envelope for the PS continuum
-        # args[alpha_order + 1: alpha_order + gamma_order + 2] are the gamma_order + 1 coefficients which define the envelope for the background
-        # args[alpha_order + gamma_order + 2: alpha_order + beta_order + gamma_order + 3] are the beta_order + 1 coefficients which define the envelope for the wiggle
-        # args[alpha_order + beta_order + gamma_order + 3] is the c_P coupling parameter between the wiggle and the PS continuum
-        # args[alpha_order + beta_order + gamma_order + 4] is the c_G coupling parameter between the wiggle and the background continuum
-        # args[alpha_order + beta_order + gamma_order + 5] is the f parameter which defines the frequency of the wiggle
-        # args[alpha_order + beta_order + gamma_order + 6:alpha_order + beta_order + gamma_order + 6 + 2 * order - 1] are the 2 * order - 1 parameters which define the wiggle model. The amplitude for the first order is fixed to 1.
+        # args[0:alpha_order + 1] are the alpha_order + 1 coefficients which define the
+        # envelope for the PS continuum
+        # args[alpha_order + 1: alpha_order + gamma_order + 2] are the gamma_order + 1
+        # coefficients which define the envelope for the background
+        # args[alpha_order + gamma_order + 2: alpha_order + beta_order + gamma_order +
+        # 3] are the beta_order + 1 coefficients which define the envelope for the
+        # wiggle
+        # args[alpha_order + beta_order + gamma_order + 3] is the c_P coupling
+        # parameter between the wiggle and the PS continuum
+        # args[alpha_order + beta_order + gamma_order + 4] is the c_G coupling
+        # parameter between the wiggle and the background continuum
+        # args[alpha_order + beta_order + gamma_order + 5] is the f parameter which
+        # defines the frequency of the wiggle
+        # args[alpha_order + beta_order + gamma_order + 6:alpha_order + beta_order +
+        # gamma_order + 6 + 2 * order - 1] are the 2 * order - 1 parameters which
+        # define the wiggle model. The amplitude for the first order is fixed to 1.
 
         jwm = build_wiggle_term(
             envelope_prototype,
@@ -456,18 +465,22 @@ def dewiggle_lambda_space(
 
     normalized_spectrum = target_spectrum / normalization
     logger.debug(
-        f"The normalized_spectrum has np.nanmin = {np.nanmin(normalized_spectrum[good_indices])} and np.nanmax = {np.nanmax(normalized_spectrum[good_indices])}"
+        f"The normalized_spectrum has np.nanmin = "
+        f"{np.nanmin(normalized_spectrum[good_indices])} and np.nanmax = "
+        f"{np.nanmax(normalized_spectrum[good_indices])}"
     )
 
     normalization_constant = np.nanmedian(normalized_spectrum[good_indices])
     logger.debug(
-        f"The input lambda run from {lam[0]} to {lam[-1]}, with min = {np.min(lam)} and max = {np.max(lam)}"
+        f"The input lambda run from {lam[0]} to {lam[-1]}, with min = {np.min(lam)} "
+        f"and max = {np.max(lam)}"
     )
     logger.debug(f"The normalization constant is {normalization_constant}")
 
     normalized_spectrum /= normalization_constant
     logger.debug(
-        f"The normalized_spectrum has np.nanmin = {np.nanmin(normalized_spectrum)} and np.nanmax = {np.nanmax(normalized_spectrum)}"
+        f"The normalized_spectrum has np.nanmin = {np.nanmin(normalized_spectrum)} "
+        f"and np.nanmax = {np.nanmax(normalized_spectrum)}"
     )
 
     good_indices = np.isfinite(normalized_spectrum)
