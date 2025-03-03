@@ -110,10 +110,9 @@ def build_wiggle_term(
         :param x: A list of values where the wiggle will be evaluated
         :param envelope_only: A flag specifying whether to return the envelope
         or the full model
-        :return: The wiggle model evaluated at the input x values (or the
-        sinusoidal_part = np.zeros_like(x)
+        :return: The wiggle model evaluated at the input x values (or the envelope if envelope_only is True)
         """
-        sinusoidal_part = 0 * x
+        sinusoidal_part = np.zeros_like(x)
 
         # Loop through the orders of the wiggle, adding the single wiggle
         # associated with each
