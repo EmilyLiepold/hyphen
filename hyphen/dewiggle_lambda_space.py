@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 def build_envelope(
     min_x: float, max_x: float
 ) -> Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]:
+    :return: The wiggle model evaluated at the input x values (or the
+    envelope if envelope_only is True)
     """
     Calculate the wiggle function using sine and cosine terms.
     Builds an envelope function based on Legendre polynomials.
@@ -111,7 +113,7 @@ def build_wiggle_term(
         :param envelope_only: A flag specifying whether to return the envelope
         or the full model
         :return: The wiggle model evaluated at the input x values (or the
-        envelope if envelope_only is True)
+        sinusoidal_part = np.zeros_like(x)
         """
         sinusoidal_part = 0 * x
 
@@ -126,7 +128,7 @@ def build_wiggle_term(
         envelope = envelope_prototype(x, *envelope_args)
 
         # Construct and return the model
-        return envelope if envelope_only else envelope * sinusoidal_part
+        return envelope * sinusoidal_part if not envelope_only else envelope
 
     return wiggle_term
 
