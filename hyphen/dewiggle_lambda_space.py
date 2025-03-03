@@ -118,7 +118,8 @@ def build_wiggle_term(
         :param x: A list of values where the wiggle will be evaluated.
         :param envelope_only: A flag specifying whether to return the envelope
         or the full model.
-        :return: The wiggle model evaluated at the input x values (or the envelope if envelope_only is True).
+        :return: The wiggle model evaluated at the input x values (or the envelope if
+        envelope_only is True).
         """
         sinusoidal_part = np.zeros_like(x)
 
@@ -140,10 +141,7 @@ def build_wiggle_term(
 
 def parse_wiggle_args(
     args: np.typing.NDArray[np.float64] | list[float],
-    alpha_order: int,
-    beta_order: int,
-    gamma_order: int,
-    order: int
+    fit_orders: dict[str, int]
         ) -> tuple[
         list[float], list[float], float
         ] | tuple[
@@ -153,18 +151,20 @@ def parse_wiggle_args(
     Parses the wiggle arguments from the provided list of arguments.
 
     Args:
-        args (list): The list of arguments to parse.
-        alpha_order (int): The order of the alpha component.
-        beta_order (int): The order of the beta component.
-        gamma_order (int): The order of the gamma component.
-        order (int): The order of the wiggle component.
-
+        args (list or np.ndarray): The list of arguments to parse.
+        fit_orders (dict): A dictionary containing the fit orders for
+            alpha, beta, gamma, and the wiggle.
     Returns:
         tuple: A tuple containing:
-            - envelope_args (list): The arguments related to the envelope.
-            - wiggle_args (list): The arguments related to the wiggle.
-            - f (any): The frequency argument.
+            - envelope_args (list or np.ndarray): The arguments related to the envelope.
+            - wiggle_args (list or np.ndarray): The arguments related to the wiggle.
+            - f (float): The frequency argument.
     """
+
+    alpha_order = fit_orders["alpha_order"]
+    beta_order = fit_orders["beta_order"]
+    gamma_order = fit_orders["gamma_order"]
+    order = fit_orders["order"]
 
     envelope_starting_index = alpha_order + gamma_order + 2
     envelope_ending_index = alpha_order + beta_order + gamma_order + 3
@@ -198,17 +198,18 @@ def convert_wiggle_solution(
     target_beta_order: int,
     target_gamma_order: int,
     target_order: int,
+    padding_length: int = 100,
 ):
 
     # First, we need to parse the solution.
 
-    alpha_args = list(sol[0: prior_alpha_order + 1]) + [0.0] * 100
+    alpha_args = list(sol[0: prior_alpha_order + 1]) + [0.0] * padding_length
     alpha_args = alpha_args[: target_alpha_order + 1]
 
     gamma_args = (
         list(sol[prior_alpha_order + 1:
                  prior_alpha_order + prior_gamma_order + 2])
-        + [0.0] * 100
+        + [0.0] * padding_length
     )
     gamma_args = gamma_args[: target_gamma_order + 1]
 
@@ -217,16 +218,17 @@ def convert_wiggle_solution(
 
     beta_args, wiggle_args, f = parse_wiggle_args(
         sol,
-        prior_alpha_order,
-        prior_beta_order,
-        prior_gamma_order,
-        prior_order
+        {'alpha_order': prior_alpha_order,
+            'beta_order': prior_beta_order,
+            'gamma_order': prior_gamma_order,
+            'order': prior_order,
+         }
         )
 
-    beta_args = list(beta_args) + [0.0] * 100
+    beta_args = list(beta_args) + [0.0] * padding_length
     beta_args = beta_args[: target_beta_order + 1]
 
-    wiggle_args = list(wiggle_args) + [0.0] * 100
+    wiggle_args = list(wiggle_args) + [0.0] * padding_length
     wiggle_args = wiggle_args[: 2 * target_order]
 
     return np.asarray(alpha_args
@@ -274,10 +276,11 @@ def build_wiggly_model(
         jwm = build_wiggle_term(
             envelope_prototype,
             *parse_wiggle_args(args,
-                               alpha_order,
-                               beta_order,
-                               gamma_order,
-                               order),
+                               {'alpha_order': alpha_order,
+                                'beta_order': beta_order,
+                                'gamma_order': gamma_order,
+                                'order': order,
+                                }),
         )
 
         alpha = envelope_prototype(x, *args[0: alpha_order + 1])
@@ -307,7 +310,12 @@ def build_wiggly_model(
 
         jwm = build_wiggle_term(
             envelope_prototype,
-            *parse_wiggle_args(args, alpha_order, beta_order, gamma_order, order),
+            *parse_wiggle_args(args,
+                               {'alpha_order': alpha_order,
+                                'beta_order': beta_order,
+                                'gamma_order': gamma_order,
+                                'order': order,
+                                }),
         )
 
         alpha = envelope_prototype(x, *args[0 : alpha_order + 1])
@@ -673,10 +681,7 @@ def dewiggle_lambda_space(
         logger.debug("Beginning plots")
         envelope_args, wiggle_args, f = parse_wiggle_args(
             xsol,
-            fit_params["alpha_order"],
-            fit_params["beta_order"],
-            fit_params["gamma_order"],
-            fit_params["order"],
+            fit_params,
         )
 
         fig, axes = plt.subplots(5, 1, figsize=(10, 16))
