@@ -250,16 +250,15 @@ def convert_wiggle_solution(
 def build_wiggly_model(
     envelope_prototype,
     background_prototype,
-    order=3,
-    alpha_order=1,
-    beta_order=3,
-    gamma_order=1,
-    prior_fit_sol=None,
-    prior_order=3,
-    prior_alpha_order=1,
-    prior_beta_order=3,
-    prior_gamma_order=1,
+    fit_orders: dict[str, int],
+    prior_fit_sol: np.typing.NDArray[np.float64] | None = None,
+    prior_fit_orders: dict[str, int] | None = None,
 ):
+
+    alpha_order = fit_orders["alpha_order"]
+    beta_order = fit_orders["beta_order"]
+    gamma_order = fit_orders["gamma_order"]
+    order = fit_orders["order"]
 
     def wm(x, *args):
         # The list of args are:
@@ -284,12 +283,7 @@ def build_wiggly_model(
 
         jwm = build_wiggle_term(
             envelope_prototype,
-            *parse_wiggle_args(args,
-                               {'alpha_order': alpha_order,
-                                'beta_order': beta_order,
-                                'gamma_order': gamma_order,
-                                'order': order,
-                                }),
+            *parse_wiggle_args(args, fit_orders),
         )
 
         alpha = envelope_prototype(x, *args[0: alpha_order + 1])
@@ -328,12 +322,7 @@ def build_wiggly_model(
 
         jwm = build_wiggle_term(
             envelope_prototype,
-            *parse_wiggle_args(args,
-                               {'alpha_order': alpha_order,
-                                'beta_order': beta_order,
-                                'gamma_order': gamma_order,
-                                'order': order,
-                                }),
+            *parse_wiggle_args(args, fit_orders),
         )
 
         alpha = envelope_prototype(x, *args[0 : alpha_order + 1])
@@ -353,21 +342,21 @@ def build_wiggly_model(
     initial_guess = []
 
     # alpha
-    bounds.append([0, 2])
+    bounds.append([0.0, 2.0])
     initial_guess.append(0.5)
     for j in range(alpha_order):
-        bounds.append([-1, 1])
+        bounds.append([-1.0, 1.0])
         initial_guess.append(0.0)
 
     # gamma
-    bounds.append([0, 2])
+    bounds.append([0.0, 2.0])
     initial_guess.append(0.5)
     for j in range(gamma_order):
-        bounds.append([-1, 1])
+        bounds.append([-1.0, 1.0])
         initial_guess.append(0.0)
 
     # beta
-    bounds.append([1 - 1e-10, 1 + 1e-10])
+    bounds.append([1.0 - 1e-10, 1.0 + 1e-10])
     initial_guess.append(1.0)
     for j in range(beta_order):
         bounds.append([-0.5, 0.5])
@@ -386,39 +375,30 @@ def build_wiggly_model(
     initial_guess.append(1.0)
 
     # a_1
-    bounds.append([-1, 1])
+    bounds.append([-1.0, 1.0])
     initial_guess.append(0.0)
 
     # b_1
-    bounds.append([-1, 1])
+    bounds.append([-1.0, 1.0])
     initial_guess.append(0.0)
 
     for j in range(order - 1):
         # a_j
-        bounds.append([-1, 1])
+        bounds.append([-1.0, 1.0])
         initial_guess.append(0.0)
 
         # b_j
-        bounds.append([-1, 1])
+        bounds.append([-1.0, 1.0])
         initial_guess.append(0.0)
 
-    bounds = np.asarray(bounds)
+    bounds = np.asarray(bounds).T
 
-    if prior_fit_sol is not None:
+    if prior_fit_sol is not None and prior_fit_orders is not None:
         initial_guess = list(
             convert_wiggle_solution(
                 prior_fit_sol,
-                {'alpha_order': prior_alpha_order,
-                    'beta_order': prior_beta_order,
-                    'gamma_order': prior_gamma_order,
-                    'order': prior_order,
-                 },
-                {'alpha_order': alpha_order,
-                    'beta_order': beta_order,
-                    'gamma_order': gamma_order,
-                    'order': order,
-                 },
-            )
+                prior_fit_orders,
+                fit_orders)
         )
 
     def get_wwm(*aa):
@@ -431,7 +411,7 @@ def build_wiggly_model(
         wm,
         initial_guess,
         get_wwm,
-        bounds.T,
+        bounds,
     )
 
 
