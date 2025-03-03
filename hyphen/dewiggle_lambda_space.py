@@ -106,11 +106,19 @@ def build_wiggle_term(
         envelope_only: bool = False
     ) -> np.typing.NDArray[np.float64]:
         """
+        Calculate the wiggle term for the given x values.
 
-        :param x: A list of values where the wiggle will be evaluated
+        This function computes the wiggle term by combining the sinusoidal part
+        and the envelope function. The sinusoidal part is calculated by summing
+        the contributions of multiple single wiggles, each defined by sine and
+        cosine terms with specific amplitudes and frequencies. The envelope
+        function is then applied to the sinusoidal part to obtain the final
+        wiggle term.
+
+        :param x: A list of values where the wiggle will be evaluated.
         :param envelope_only: A flag specifying whether to return the envelope
-        or the full model
-        :return: The wiggle model evaluated at the input x values (or the envelope if envelope_only is True)
+        or the full model.
+        :return: The wiggle model evaluated at the input x values (or the envelope if envelope_only is True).
         """
         sinusoidal_part = np.zeros_like(x)
 
