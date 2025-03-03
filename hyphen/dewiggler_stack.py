@@ -147,11 +147,14 @@ def get_principal_axes(frame_3d: HDUList) -> tuple[np.ndarray, np.ndarray, np.nd
     # Define the axes of the 3D frame
     # Note that the ordering of the axes is opposite of the fits datacube.
     # e.g., frame_3d[1].data.shape = (NAXIS3, NAXIS2, NAXIS1)
-    # axis_pixel runs along the pixel axis (e.g., each index here corresponds to a different pixel)
-    # axis_slice runs along the slice axis (e.g., each index here corresponds to a different slice)
+    # axis_pixel runs along the pixel axis (e.g., each index here corresponds to a
+    # different pixel)
+    # axis_slice runs along the slice axis (e.g., each index here corresponds to a
+    # different slice)
     # axis_spectral runs along the spectral axis
 
-    # Note that the sign of displacements along the slice axis are reversed here for convenience while plotting.
+    # Note that the sign of displacements along the slice axis are reversed here for
+    # convenience while plotting.
     axis_pixel = frame_3d[1].header["CDELT1"] * np.arange(frame_3d[1].header["NAXIS1"])
     axis_slice = -frame_3d[1].header["CDELT2"] * np.arange(frame_3d[1].header["NAXIS2"])
     axis_spectral = frame_3d[1].header["CRVAL3"] + frame_3d[1].header["CDELT3"] * (
@@ -193,7 +196,8 @@ def determine_target_pixel(
 
     else:
         logger.warning(
-            "Neither target pixel nor target RA and Dec not provided. Finding the target pixel from the peak of the median image..."
+            "Neither target pixel nor target RA and Dec not provided. Finding the"
+            "target pixel from the peak of the median image..."
         )
         target_pixel = (
             np.asarray(np.where(image[:, :] == np.nanmax(image[:, :])))[:, 0][::-1] + 1
@@ -236,7 +240,9 @@ def determine_reference_spectrum(
     )
 
     logger.info(
-        f'Using {len(reference_spectrum_indices[0])} spaxels between {inner_radius}-{outer_radius}" to compute the reference spectrum'
+        f'Using {len(reference_spectrum_indices[0])}'
+        f'spaxels between {inner_radius}-{outer_radius}'
+        f'to compute the reference spectrum'
     )
 
     # Make a smoothed version of the reference spectrum by fitting with a low-order polynomial
@@ -432,7 +438,7 @@ def build_image_map(
     background_reference_spectrum_radius: tuple[float, float],
 ) -> object:
     if not plot:
-        return
+        return None
 
     fig, axes = plt.subplots(1, 1, figsize=(6, 6))
     _build_image_map(
@@ -451,6 +457,8 @@ def build_image_map(
 
     plot.savefig()
     plt.close()
+
+    return None
 
 
 def build_reference_spectra_plot(
@@ -597,6 +605,8 @@ def build_bar_map_plot(
     plot.savefig()
     plt.close()
 
+    return None
+
 
 def build_spaxel_map_plot(
     plot: object,
@@ -716,6 +726,8 @@ def build_spaxel_map_plot(
 
     plot.savefig()
     plt.close()
+
+    return None
 
 
 def build_population_diagnostics(
@@ -913,7 +925,7 @@ def build_population_diagnostics(
 
         plot.savefig()
         plt.close()
-    pass
+    return None
 
 
 def dewiggler_stack(
