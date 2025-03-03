@@ -31,21 +31,6 @@ def generic_envelope(x: np.typing.NDArray[np.float64],
     return leg_values
 
 
-def build_envelope(
-    min_x: float, max_x: float
-) -> Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]:
-    """
-    Calculate the wiggle function using sine and cosine terms.
-    Builds an envelope function based on Legendre polynomials.
-
-    :param min_x: The minimum x value for rescaling.
-    :param max_x: The maximum x value for rescaling.
-    :return: A callable function that computes the envelope.
-    """
-
-    return partial(generic_envelope, min_x=min_x, max_x=max_x)
-
-
 def single_wiggle(
     x: np.typing.NDArray[np.float64],
     order: int,
@@ -524,7 +509,7 @@ def dewiggle_lambda_space(
 
     y_for_fft = normalized_spectrum[good_indices]
 
-    envelope = build_envelope(np.min(x_vals), np.max(x_vals))
+    envelope = partial(generic_envelope, min_x=np.min(x_vals), max_x=np.max(x_vals))
 
     if noise_spectrum is not None:
         normalized_noise_spectrum = (
