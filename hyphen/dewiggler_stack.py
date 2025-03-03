@@ -66,6 +66,7 @@ def get_wcs(
     logger.info("Computing WCS for the slices in the 2D frame")
 
     wcs_cachefilename = fn_2d.replace(".fits", ".wcs")
+    
     # Compute the wcs for the 2D frame (list of wcs for each slice) and for the 3D cube
     recompute_wcs = False
     if use_cached_wcs:
@@ -136,12 +137,21 @@ def get_trace_model(
     return trace_x, trace_y
 
 
-def get_principal_axes(frame_3d: HDUList) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def get_principal_axes(
+    frame_3d: HDUList
+    ) -> tuple[
+        np.typing.NDArray[np.float64],
+        np.typing.NDArray[np.float64],
+        np.typing.NDArray[np.float64]
+        ]:
     """
     Get the principal axes of the 3D frame
     :rtype: tuple[np.ndarray, np.ndarray, np.ndarray]
     :param frame_3d: This is the fits object for the 3D detector-frame exposure
-    :return:
+    :return: A tuple containing three numpy arrays:
+        - axis_pixel: The pixel axis values.
+        - axis_slice: The slice axis values.
+        - axis_spectral: The spectral axis values.
     """
 
     # Define the axes of the 3D frame
@@ -169,10 +179,28 @@ def get_principal_axes(frame_3d: HDUList) -> tuple[np.ndarray, np.ndarray, np.nd
 
 
 def determine_target_pixel(
-    target_pixel=[-1, -1], target_radec=(0.0, 0.0), frame_3d_wcs=None, image=None
-):
+    target_pixel: (tuple[int, int] | list[int] | np.typing.NDArray[np.int_]) = (-1, -1),
+    target_radec: (tuple[float, float] | list[float] | np.typing.NDArray[np.float64]) =
+                  (0.0, 0.0),
+    frame_3d_wcs: WCS = None,
+    image: (np.typing.NDArray[np.float64] | None) = None,
+            ) -> np.typing.NDArray[np.int_]:
 
-    if target_pixel != [-1, -1]:
+    """
+    Determine the target pixel coordinates.
+
+    :param target_pixel: The target pixel coordinates. Default is (-1, -1).
+    :param target_radec: The target Right Ascension (RA) and Declination (Dec)
+                         coordinates. Default is (0.0, 0.0).
+    :param frame_3d_wcs: The World Coordinate System (WCS) object for the 3D frame.
+                         Default is None.
+    :param image: The image array from which to determine the target pixel if neither
+                  target_pixel nor target_radec is provided. Default is None.
+    :return:  The determined target pixel coordinates as an array of integers.
+
+    """
+
+    if target_pixel != (-1, -1):
         logger.info("Using provided target pixel provided.")
         target_pixel = target_pixel
     elif target_radec != (0.0, 0.0):
@@ -189,12 +217,12 @@ def determine_target_pixel(
         )
         target_pixel = np.asarray(
             [
-                int(np.round(target_pixel_3d[0]) + 1),
-                int(np.round(target_pixel_3d[1]) + 1),
+                (np.round(target_pixel_3d[0]) + 1).astype(int),
+                (np.round(target_pixel_3d[1]) + 1).astype(int),
             ]
         )
 
-    else:
+    elif image is not None:
         logger.warning(
             "Neither target pixel nor target RA and Dec not provided. Finding the"
             "target pixel from the peak of the median image..."
@@ -202,7 +230,11 @@ def determine_target_pixel(
         target_pixel = (
             np.asarray(np.where(image[:, :] == np.nanmax(image[:, :])))[:, 0][::-1] + 1
         ).astype(int)
-
+    else:
+        raise ValueError(
+            "No target pixel, target RA and Dec, or image provided. Cannot determine"
+            "the target pixel."
+        )
     target_pixel = np.asarray(target_pixel).astype(int)
     logger.info(f"Using the target pixel {target_pixel} (slice, pixel)")
 
@@ -1019,8 +1051,9 @@ def dewiggler_stack(
         image=image,
     )
 
-    # TODO need to change all future references to target_pixel to be [y+1, x+1] instead of [x, y]
-    target_pixel = [t - 1 for t in target_pixel][::-1]
+    # TODO need to change all future references to target_pixel to be [y+1, x+1]
+    # instead of [x, y]
+    target_pixel = (target_pixel[1] - 1, target_pixel[0] - 1)
     target_wiggle_pixels = [[t - 1 for t in tp][::-1] for tp in target_wiggle_pixels]
 
     spaxel_distance = determine_spaxel_distances(spatial_arr, target_pixel)
@@ -1103,17 +1136,17 @@ def dewiggler_stack(
     if diagnostic_fraction != 1:
         logger.info(f"Only dewiggling every {diagnostic_fraction}th pixel")
 
-    def dewiggle_main_loop(i: int) -> None:
+    def dewiggle_main_loop(i: int):
 
         target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
         dist = spaxel_distance[target_index[1], target_index[0]]
 
         logger.info("")
         logger.info(
-            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+            80 * "~"
         )
         logger.info(
-            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+            80 * "~"
         )
 
         inner_log_msg = (
@@ -1129,10 +1162,10 @@ def dewiggler_stack(
         logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
 
         logger.info(
-            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+            80 * "~"
         )
         logger.info(
-            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+            80 * "~"
         )
         logger.info("")
 
@@ -1143,11 +1176,13 @@ def dewiggler_stack(
         target_slices = [base_target_slice + s for s in slices_to_use]
 
         logger.debug(
-            f"This spaxel is estimated to be in slice {base_target_slice + 1} (fractional position {fp[0]:.2f})"
+            f"This spaxel is estimated to be in slice {base_target_slice + 1}"
+            f"(fractional position {fp[0]:.2f})"
         )
 
         logger.debug(
-            f"For this spaxel, we will try fitting with slices {[t + 1 for t in target_slices]}"
+            f"For this spaxel, we will try fitting with slices"
+            f"{[t + 1 for t in target_slices]}"
         )
 
         # find world coordinates for the target pixel
@@ -1224,12 +1259,12 @@ def dewiggler_stack(
             )
 
             logger.info(
-                "-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~"
+                40 * "-~"
             )
             logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {target_slice + 1}")
             logger.info(f"  Previous best was {base_x2**0.5:.4f}")
             logger.info(
-                "-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~"
+                40 * "-~"
             )
 
             if (x2 < base_x2) or (preferred_wiggle_model is None):
@@ -1239,7 +1274,8 @@ def dewiggler_stack(
 
         if mask_bad_fits & (base_x2**0.5 > fractional_residual_threshold):
             logger.warning(
-                f"Couldn't find a solution with √𝜈 < {fractional_residual_threshold}. Masking this pixel."
+                f"Couldn't find a solution with √𝜈 < {fractional_residual_threshold}."
+                f"Masking this pixel."
             )
             preferred_dewiggled_spectrum = np.nan * preferred_dewiggled_spectrum
 
