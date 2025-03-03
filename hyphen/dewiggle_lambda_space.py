@@ -5,8 +5,30 @@ import matplotlib.pyplot as plt
 from numpy.fft import fft
 from scipy.optimize import curve_fit
 from typing import Callable
-
+from functools import partial
 logger = logging.getLogger(__name__)
+
+
+def generic_envelope(x: np.typing.NDArray[np.float64],
+                     *leg_coefficients: float,
+                     min_x: float,
+                     max_x: float) -> np.typing.NDArray[np.float64]:
+    """
+    Calculate the envelope function using Legendre polynomials.
+
+    Parameters:
+    x (float): The input value for which the envelope function is
+        calculated.
+    *leg_coefficients (float): Coefficients for the Legendre polynomial.
+    Returns:
+    float: The calculated value of the envelope function.
+    """
+    mod_leg_coefficients = [1.0] + list(leg_coefficients[1:])
+    legendre = np.polynomial.Legendre(mod_leg_coefficients)
+    rescaled_x = 2 * (x - min_x) / (max_x - min_x) - 1
+    leg_values = leg_coefficients[0] * legendre(rescaled_x)
+
+    return leg_values
 
 
 def build_envelope(
@@ -21,26 +43,7 @@ def build_envelope(
     :return: A callable function that computes the envelope.
     """
 
-    def envelope(x: np.typing.NDArray[np.float64],
-                 *leg_coefficients: float) -> np.typing.NDArray[np.float64]:
-        """
-        Calculate the envelope function using Legendre polynomials.
-
-        Parameters:
-        x (float): The input value for which the envelope function is
-            calculated.
-        *leg_coefficients (float): Coefficients for the Legendre polynomial.
-        Returns:
-        float: The calculated value of the envelope function.
-        """
-        mod_leg_coefficients = [1.0] + list(leg_coefficients[1:])
-        legendre = np.polynomial.Legendre(mod_leg_coefficients)
-        rescaled_x = 2 * (x - min_x) / (max_x - min_x) - 1
-        leg_values = leg_coefficients[0] * legendre(rescaled_x)
-
-        return leg_values
-
-    return envelope
+    return partial(generic_envelope, min_x=min_x, max_x=max_x)
 
 
 def single_wiggle(
@@ -189,17 +192,38 @@ def parse_wiggle_args(
 
 
 def convert_wiggle_solution(
+
     sol: np.typing.NDArray[np.float64],
-    prior_alpha_order: int,
-    prior_beta_order: int,
-    prior_gamma_order: int,
-    prior_order: int,
-    target_alpha_order: int,
-    target_beta_order: int,
-    target_gamma_order: int,
-    target_order: int,
+    prior_fit_orders: dict[str, int],
+    target_fit_orders: dict[str, int],
     padding_length: int = 100,
 ):
+    """
+    Converts a wiggle solution from one set of orders to another, 
+    with appropriate padding.
+
+    Parameters:
+    sol (np.typing.NDArray[np.float64]): The solution array containing prior solution
+    prior_fit_orders (dict[str, int]): A dictionary containing the fit orders
+        corresponding to the prior solution.
+    target_fit_orders (dict[str,int]): A dictionary containing the fit orders
+        which the solution should be converted to.
+    padding_length (int, optional): The length of padding to apply to the 
+        parameters before conversion. Default is 100.
+
+    Returns:
+    np.ndarray: The converted solution array with the target orders and padding applied.
+    """
+
+    prior_alpha_order = prior_fit_orders["alpha_order"]
+    prior_beta_order = prior_fit_orders["beta_order"]
+    prior_gamma_order = prior_fit_orders["gamma_order"]
+    prior_order = prior_fit_orders["order"]
+
+    target_alpha_order = target_fit_orders["alpha_order"]
+    target_beta_order = target_fit_orders["beta_order"]
+    target_gamma_order = target_fit_orders["gamma_order"]
+    target_order = target_fit_orders["order"]
 
     # First, we need to parse the solution.
 
@@ -390,14 +414,16 @@ def build_wiggly_model(
         initial_guess = list(
             convert_wiggle_solution(
                 prior_fit_sol,
-                prior_alpha_order,
-                prior_beta_order,
-                prior_gamma_order,
-                prior_order,
-                alpha_order,
-                beta_order,
-                gamma_order,
-                order,
+                {'alpha_order': prior_alpha_order,
+                    'beta_order': prior_beta_order,
+                    'gamma_order': prior_gamma_order,
+                    'order': prior_order,
+                 },
+                {'alpha_order': alpha_order,
+                    'beta_order': beta_order,
+                    'gamma_order': gamma_order,
+                    'order': order,
+                 },
             )
         )
 
