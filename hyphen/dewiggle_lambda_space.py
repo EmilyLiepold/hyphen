@@ -22,7 +22,10 @@ def build_envelope(
     :return: A callable function that computes the envelope.
     """
 
-    def envelope(x: float, *leg_coefficients: float) -> float:
+    def envelope(
+        x: np.typing.NDArray[np.float64],
+        *leg_coefficients: np.float64
+            ) -> np.typing.NDArray[np.float64]:
         """
         Calculate the envelope function using Legendre polynomials.
 
@@ -43,7 +46,13 @@ def build_envelope(
     return envelope
 
 
-def single_wiggle(x: float, order: int, a: float, b: float, f: float) -> float:
+def single_wiggle(
+    x: np.typing.NDArray[np.float64],
+    order: int,
+    a: float,
+    b: float,
+    f: float
+        ) -> np.typing.NDArray[np.float64]:
     """
 
     :param x: This is the x value at which the wiggle is evaluated
