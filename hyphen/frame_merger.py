@@ -218,7 +218,8 @@ def build_big_spectra_figure(
         axes.text(
             lam[0],
             normed_flux[0] - offset * j,
-            f"R = {r[j]:.3f}'', ({indices[j, 0]}, {indices[j, 1]})\n norm = {norm_val:.2f}",
+            f"R = {r[j]:.3f}'', ({indices[j, 0]}, {indices[j, 1]})\n"
+            f"norm = {norm_val:.2f}",
             verticalalignment="center",
             horizontalalignment="right",
             fontsize=6,
@@ -264,7 +265,8 @@ def frame_merge(
         pdf = PdfPages(diagnostic_plot_filename)
         logger.info(f"Saving diagnostic plots to {diagnostic_plot_filename}")
 
-    # We want to follow the same protocol as the jwst.cube_build.ifu_cube.find_spaxel_flux() function.
+    # We want to follow the same protocol as the
+    # jwst.cube_build.ifu_cube.find_spaxel_flux() function.
 
     fluxes, variances, dqs, weights, frames = load_frames(
         fnss,

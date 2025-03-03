@@ -18,8 +18,8 @@ def generic_envelope(x: np.typing.NDArray[np.float64],
 
     :param x: The input value for which the envelope function is
         calculated.
-    :param *leg_coefficients: The coefficients of the Legendre polynomial which describes the
-        envelope
+    :param *leg_coefficients: The coefficients of the Legendre polynomial which
+        describes the envelope
     :param min_x: The minimum value of the x range to use for recaling the x values.
     :param max_x: The maximum value of the x range to use for recaling the x values.
     :return: The calculated value of the envelope function.

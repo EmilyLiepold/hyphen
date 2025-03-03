@@ -66,7 +66,7 @@ def get_wcs(
     logger.info("Computing WCS for the slices in the 2D frame")
 
     wcs_cachefilename = fn_2d.replace(".fits", ".wcs")
-    
+
     # Compute the wcs for the 2D frame (list of wcs for each slice) and for the 3D cube
     recompute_wcs = False
     if use_cached_wcs:
@@ -111,7 +111,7 @@ def determine_detector_name(frame_2d: HDUList) -> str:
 def get_trace_model(
     detector_wcs: WCS, ra: float, dec: float
 ) -> tuple[
-    Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]], 
+    Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]],
     Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]
 ]:
     """
@@ -1239,8 +1239,8 @@ def dewiggler_stack(
         # For good measure, we'll try the de-wiggling on the slice before and after the target slice and use the best model of the three.
 
         base_x2 = 1e10
-        preferred_wiggle_model = None
-        preferred_dewiggled_spectrum = None
+        preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
+        preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
 
         logger.debug(f"Starting the dewiggler for index {i}!")
         for tindex, target_slice in enumerate(target_slices):
