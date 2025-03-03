@@ -4,14 +4,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft
 from scipy.optimize import curve_fit
-from scipy.interpolate import interp1d
 from typing import Callable
 
 logger = logging.getLogger(__name__)
 
 
-def build_envelope(min_x: float, max_x: float) -> Callable:
+def build_envelope(
+    min_x: float, max_x: float
+) -> Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]:
     """
+    Calculate the wiggle term based on the provided envelope and wiggle arguments.
     Calculate the wiggle function using sine and cosine terms.
     Builds an envelope function based on Legendre polynomials.
 
@@ -20,7 +22,9 @@ def build_envelope(min_x: float, max_x: float) -> Callable:
     :return: A callable function that computes the envelope.
     """
 
-    def envelope(x: float, *leg_coefficients: float) -> float:
+    def envelope(
+        x: np.typing.NDArray[np.float64], *leg_coefficients: float
+    ) -> np.typing.NDArray[np.float64]:
         """
         Calculate the envelope function using Legendre polynomials.
 
@@ -41,7 +45,9 @@ def build_envelope(min_x: float, max_x: float) -> Callable:
     return envelope
 
 
-def single_wiggle(x: float, order: int, a: float, b: float, f: float) -> float:
+def single_wiggle(
+    x: np.typing.NDArray[np.float64], order: int, a: float, b: float, f: float
+) -> np.typing.NDArray[np.float64]:
     """
 
     :param x: This is the x value at which the wiggle is evaluated
@@ -53,19 +59,21 @@ def single_wiggle(x: float, order: int, a: float, b: float, f: float) -> float:
         Typical value should be 1.0
     :return: The wiggle, evaluated at all points in x
     """
-    frequency = 2 * order * np.pi * f
-    sin_term = np.sin(frequency * x)
-    cos_term = np.cos(frequency * x)
+    frequency: float = 2 * order * np.pi * f
+    sin_term: np.typing.NDArray[np.float64] = np.sin(frequency * x)
+    cos_term: np.typing.NDArray[np.float64] = np.cos(frequency * x)
 
     return a * sin_term + b * cos_term
 
 
 def build_wiggle_term(
-    envelope_prototype: callable,
-    envelope_args: list,
-    wiggle_args: list,
-    f: float = 1,
-) -> callable:
+    envelope_prototype: Callable[
+        [np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]
+    ],
+    envelope_args: list[float] | np.typing.NDArray[np.float64],
+    wiggle_args: list[float] | np.typing.NDArray[np.float64],
+    f: float = 1.0,
+) -> Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]:
     """
 
     :param envelope_prototype: This function defines a generic envelope. It
@@ -81,17 +89,19 @@ def build_wiggle_term(
         at the input x values
     """
 
-    wiggle_args = list(wiggle_args)
     order = len(wiggle_args) // 2
 
-    assert len(wiggle_args) % 2 == 0, \
+    assert len(wiggle_args) % 2 == 0, (
         "The number of wiggle arguments must be even"
+    )
 
     assert (
         len(wiggle_args) == 2 * order
     ), "The number of wiggle arguments is not two per order..."
 
-    def wiggle_term(x: float, envelope_only: bool = False) -> float:
+    def wiggle_term(
+        x: np.typing.NDArray[np.float64], envelope_only: bool = False
+    ) -> np.typing.NDArray[np.float64]:
         """
 
         :param x: A list of values where the wiggle will be evaluated
@@ -99,8 +109,11 @@ def build_wiggle_term(
         or the full model
         :return: The wiggle model evaluated at the input x values (or the
         envelope if envelope_only is True)
+        sinusoidal_part: np.typing.NDArray[np.float64] = np.zeros_like(x)
+        sinusoidal_part: np.typing.NDArray[np.float64] = 0 * x
         """
-        sinusoidal_part = 0 * x
+
+        sinusoidal_part: np.typing.NDArray[np.float64] = np.zeros_like(x)
 
         # Loop through the orders of the wiggle, adding the single wiggle
         # associated with each
@@ -118,52 +131,72 @@ def build_wiggle_term(
     return wiggle_term
 
 
-def parse_wiggle_args(args, alpha_order, beta_order, gamma_order, order):
-    envelope_args = args[
-        alpha_order
-        + gamma_order
-        + 2:
-        alpha_order
-        + beta_order
-        + gamma_order
-        + 3
-    ]
-    wiggle_args = args[
-        alpha_order
-        + beta_order
-        + gamma_order
-        + 6:
-        alpha_order
-        + beta_order
-        + gamma_order
-        + 6
-        + 2 * order
-    ]
-    f = args[alpha_order + beta_order + gamma_order + 5]
+def parse_wiggle_args(
+    args: np.typing.NDArray[np.float64] | list[float],
+    alpha_order: int,
+    beta_order: int,
+    gamma_order: int,
+    order: int,
+) -> (
+    tuple[list[float], list[float], float]
+    | tuple[np.typing.NDArray[np.float64], np.typing.NDArray[np.float64], float]
+):
+    """
+    Parses the wiggle arguments from the provided list of arguments.
 
-    return envelope_args, wiggle_args, f
+    Args:
+        args (list): The list of arguments to parse.
+        alpha_order (int): The order of the alpha component.
+        beta_order (int): The order of the beta component.
+        gamma_order (int): The order of the gamma component.
+        order (int): The order of the wiggle component.
+
+    Returns:
+        tuple: A tuple containing:
+            - envelope_args (list): The arguments related to the envelope.
+            - wiggle_args (list): The arguments related to the wiggle.
+            - f (any): The frequency argument.
+    """
+
+    envelope_starting_index = alpha_order + gamma_order + 2
+    envelope_ending_index = alpha_order + beta_order + gamma_order + 3
+
+    envelope_args = args[envelope_starting_index:envelope_ending_index]
+
+    wiggle_starting_index = alpha_order + beta_order + gamma_order + 6
+    wiggle_ending_index = alpha_order + beta_order + gamma_order + 6 + 2 * order
+
+    wiggle_args = args[wiggle_starting_index:wiggle_ending_index]
+
+    frequency_index = alpha_order + beta_order + gamma_order + 5
+
+    f = args[frequency_index]
+
+    if isinstance(args, np.ndarray):
+        return np.asarray(envelope_args), np.asarray(wiggle_args), float(f)
+    else:
+        return list(envelope_args), list(wiggle_args), float(f)
 
 
 def convert_wiggle_solution(
-    sol,
-    prior_alpha_order,
-    prior_beta_order,
-    prior_gamma_order,
-    prior_order,
-    target_alpha_order,
-    target_beta_order,
-    target_gamma_order,
-    target_order,
+    sol: np.typing.NDArray[np.float64],
+    prior_alpha_order: int,
+    prior_beta_order: int,
+    prior_gamma_order: int,
+    prior_order: int,
+    target_alpha_order: int,
+    target_beta_order: int,
+    target_gamma_order: int,
+    target_order: int,
 ):
 
     # First, we need to parse the solution.
 
-    alpha_args = list(sol[0: prior_alpha_order + 1]) + [0.0] * 100
+    alpha_args = list(sol[0 : prior_alpha_order + 1]) + [0.0] * 100
     alpha_args = alpha_args[: target_alpha_order + 1]
 
     gamma_args = (
-        list(sol[prior_alpha_order + 1:
-                 prior_alpha_order + prior_gamma_order + 2])
+        list(sol[prior_alpha_order + 1 : prior_alpha_order + prior_gamma_order + 2])
         + [0.0] * 100
     )
     gamma_args = gamma_args[: target_gamma_order + 1]
@@ -172,12 +205,8 @@ def convert_wiggle_solution(
     cG = sol[prior_alpha_order + prior_beta_order + prior_gamma_order + 4]
 
     beta_args, wiggle_args, f = parse_wiggle_args(
-        sol,
-        prior_alpha_order,
-        prior_beta_order,
-        prior_gamma_order,
-        prior_order
-        )
+        sol, prior_alpha_order, prior_beta_order, prior_gamma_order, prior_order
+    )
 
     beta_args = list(beta_args) + [0.0] * 100
     beta_args = beta_args[: target_beta_order + 1]
@@ -185,11 +214,7 @@ def convert_wiggle_solution(
     wiggle_args = list(wiggle_args) + [0.0] * 100
     wiggle_args = wiggle_args[: 2 * target_order]
 
-    return np.asarray(alpha_args
-                      + gamma_args
-                      + beta_args
-                      + [cP, cG, f]
-                      + wiggle_args)
+    return np.asarray(alpha_args + gamma_args + beta_args + [cP, cG, f] + wiggle_args)
 
 
 def build_wiggly_model(
@@ -229,14 +254,10 @@ def build_wiggly_model(
 
         jwm = build_wiggle_term(
             envelope_prototype,
-            *parse_wiggle_args(args,
-                               alpha_order,
-                               beta_order,
-                               gamma_order,
-                               order),
+            *parse_wiggle_args(args, alpha_order, beta_order, gamma_order, order),
         )
 
-        alpha = envelope_prototype(x, *args[0: alpha_order + 1])
+        alpha = envelope_prototype(x, *args[0 : alpha_order + 1])
         gamma = envelope_prototype(
             x, *args[alpha_order + 1 : alpha_order + gamma_order + 2]
         )
@@ -268,7 +289,7 @@ def build_wiggly_model(
 
         alpha = envelope_prototype(x, *args[0 : alpha_order + 1])
         gamma = envelope_prototype(
-            x, *args[alpha_order + 1: alpha_order + gamma_order + 2]
+            x, *args[alpha_order + 1 : alpha_order + gamma_order + 2]
         )
 
         return alpha * (
@@ -420,7 +441,7 @@ def dewiggle_lambda_space(
 
     med_px = trace_model[0][0](lam)
     med_px -= np.nanmedian(med_px)
-    inverse_model = interp1d(med_px, lam, fill_value="extrapolate")
+    inverse_model = np.interp(med_px, lam)
 
     background_normalization = np.nanmedian(
         np.polyval(background_pf, lam) / np.polyval(continuum_model, lam)
@@ -743,11 +764,11 @@ def dewiggle_lambda_space(
 
         # axes[3].plot(X_vals, residual_without_continuum, label="Wiggle without continuum", c="b")
 
-        spectrum_without_continuum_interpolation = interp1d(
-            x_vals, spectrum_without_continuum, fill_value="extrapolate"
+        spectrum_without_continuum_interpolation = np.interp(
+            x_vals, spectrum_without_continuum
         )
-        residual_without_continuum_interpolation = interp1d(
-            x_vals, residual_without_continuum, fill_value="extrapolate"
+        residual_without_continuum_interpolation = np.interp(
+            x_vals, residual_without_continuum
         )
 
         fine_x_grid = np.linspace(np.min(x_vals), np.max(x_vals), 20 * len(x_vals))
