@@ -277,9 +277,11 @@ def determine_reference_spectrum(
         f'to compute the reference spectrum'
     )
 
-    # Make a smoothed version of the reference spectrum by fitting with a low-order polynomial
+    # Make a smoothed version of the reference spectrum by fitting with a low-order
+    # polynomial
     logger.info(
-        f"Fitting {smooth_model_poly_order}-th order polynomials to the reference spectra"
+        f"Fitting {smooth_model_poly_order}-th order "
+        f"polynomials to the reference spectra"
     )
 
     good_pixels = (
@@ -451,7 +453,8 @@ def _build_image_map(
     axes.set_xlabel("Index 2, Slice Axis, arcsec")
     axes.grid(c="r")
     axes.set_title(
-        f"Median image of {frame_3d_shortname}\n Horizontal lines have constant pixel number \n Vertical lines have constant slice number"
+        f"Median image of {frame_3d_shortname}\n Horizontal lines "
+        f"have constant pixel number \n Vertical lines have constant slice number"
     )
 
     return (fig, axes)
@@ -504,7 +507,7 @@ def build_reference_spectra_plot(
     central_reference_spectrum_radius: float,
     background_reference_spectrum_radius: tuple[float, float],
     smooth_model_poly_order: int,
-) -> object:
+) -> None:
     if not plot:
         return
 
@@ -516,7 +519,8 @@ def build_reference_spectra_plot(
         axis_spectral[np.isfinite(central_reference_spectrum)],
         central_reference_spectrum[np.isfinite(central_reference_spectrum)],
         c="k",
-        label=f'Central Reference Spectrum, mean of central {central_reference_spectrum_radius:.2f}"',
+        label=f'Central Reference Spectrum, mean of central '
+              f'{central_reference_spectrum_radius:.2f}"',
     )
     axes[0].plot(
         axis_spectral[np.isfinite(central_reference_spectrum)],
@@ -532,7 +536,11 @@ def build_reference_spectra_plot(
         axis_spectral[np.isfinite(background_reference_spectrum)],
         background_reference_spectrum[np.isfinite(background_reference_spectrum)],
         c="k",
-        label=f'Background Reference Spectrum, mean between ({background_reference_spectrum_radius[0]:.2f}-{background_reference_spectrum_radius[1]:.2f})"',
+        label=(
+            f'Background Reference Spectrum, mean between '
+            f'({background_reference_spectrum_radius[0]:.2f}'
+            f'-{background_reference_spectrum_radius[1]:.2f})"'
+        ),
     )
     axes[1].plot(
         axis_spectral[np.isfinite(background_reference_spectrum)],
@@ -577,6 +585,8 @@ def build_reference_spectra_plot(
     fig.subplots_adjust(left=0.15)
     plot.savefig()
     plt.close()
+
+    return None
 
 
 def build_bar_map_plot(
@@ -652,12 +662,16 @@ def build_spaxel_map_plot(
     target_slices: list[int],
     frame_2d: HDUList,
     bars: np.ndarray,
-    trace_models: list[callable],
+    trace_models: list[
+        list[
+        Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]
+        ]
+    ],
     dewiggling_radius: float,
     central_reference_spectrum_radius: float,
-) -> object:
+) -> None:
     if not plot:
-        return
+        return None
 
     logger.debug("Plotting the map and slice traces for the target pixel")
 
@@ -807,7 +821,13 @@ def build_population_diagnostics(
         cG = xx[0][alpha_order + beta_order + gamma_order + 4]
 
         beta_args, wiggle_args, f = parse_wiggle_args(
-            xx[0], alpha_order, beta_order, gamma_order, order
+            xx[0],
+            {
+                'alpha_order': alpha_order,
+                'beta_order': beta_order,
+                'gamma_order': gamma_order,
+                'order': order,
+            },
         )
 
         wiggle_args = list(wiggle_args)
