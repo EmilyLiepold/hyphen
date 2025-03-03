@@ -16,12 +16,13 @@ def generic_envelope(x: np.typing.NDArray[np.float64],
     """
     Calculate the envelope function using Legendre polynomials.
 
-    Parameters:
-    x (float): The input value for which the envelope function is
+    :param x: The input value for which the envelope function is
         calculated.
-    *leg_coefficients (float): Coefficients for the Legendre polynomial.
-    Returns:
-    float: The calculated value of the envelope function.
+    :param *leg_coefficients: The coefficients of the Legendre polynomial which describes the
+        envelope
+    :param min_x: The minimum value of the x range to use for recaling the x values.
+    :param max_x: The maximum value of the x range to use for recaling the x values.
+    :return: The calculated value of the envelope function.
     """
     mod_leg_coefficients = [1.0] + list(leg_coefficients[1:])
     legendre = np.polynomial.Legendre(mod_leg_coefficients)

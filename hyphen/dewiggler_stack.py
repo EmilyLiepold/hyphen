@@ -14,7 +14,7 @@ from stdatamodels.jwst.datamodels import ImageModel
 from jwst.assign_wcs import nrs_ifu_wcs
 from joblib import delayed
 import dill as d
-from scipy.interpolate import interp1d
+from typing import Callable
 
 from .tracer_helpers import find_bars, infer_fractional_position
 from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 def load_frames(fn_2d: str, fn_3d: str) -> tuple[HDUList, HDUList, str, str]:
     """
     Load the 2D and 3D frames
+
     :param fn_2d: This is the filename for the 2D detector-frame fits file
     :param fn_3d: This is the filename for the 3D rectified fits file
-    :return:
+    :return: A tuple containing the 2D and 3D frames and their shortnames
     """
 
     # Load the 2D and 3D frames
@@ -53,10 +54,14 @@ def get_wcs(
 ) -> tuple[list[WCS], WCS]:
     """
     Get the wcs for the 2D and 3D frames
-    :rtype: tuple[list[WCS], WCS]
+
     :param fn_2d: This is the filename for the 2D detector-frame fits file
     :param frame_3d: This is the fits object for the 3D detector-frame fits file.
-    :param use_cached_wcs: If True, we'll try to use a cached WCS file. If False, we'll compute the WCS from scratch. If there's an issue with loading the cached WCS, we'll compute the WCS from scratch.
+    :param use_cached_wcs: If True, we'll try to use a cached WCS file. If False, we'll
+        compute the WCS from scratch. If there's an issue with loading the cached WCS,
+        we'll compute the WCS from scratch.
+    :return: A tuple containing a list of the WCS for each slice in the 2D frame and
+        the WCS for the 3D frame
     """
     logger.info("Computing WCS for the slices in the 2D frame")
 
@@ -92,9 +97,8 @@ def get_wcs(
 def determine_detector_name(frame_2d: HDUList) -> str:
     """
     Determine the detector from the 2D frame
-    :rtype: str
     :param frame_2d: This is fits object for the 2D detector-frame exposure
-    :return:
+    :return: The name of the detector used in the 2D frame (e.g., NRS1, NRS2)
     """
     detector = frame_2d[0].header["DETECTOR"]
 
@@ -105,34 +109,31 @@ def determine_detector_name(frame_2d: HDUList) -> str:
 
 def get_trace_model(
     detector_wcs: WCS, ra: float, dec: float
-) -> tuple[callable, callable]:
+) -> tuple[
+    Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]], 
+    Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]
+]:
     """
     Get the trace model for a given ra and dec
+
     :param detector_wcs: The WCS for the detector-frame exposure
     :param ra: The RA in degrees to use for the spectral trace
     :param dec: The DEC in degrees to use for the spectral trace
     :return:
     """
 
-    def trace_x(x: float) -> float:
-        return np.atleast_2d(detector_wcs.transform("world", "detector", ra, dec, x))[
-            1, :
-        ]
+    def generic_trace(
+        x: np.typing.NDArray[np.float64]
+    ) -> np.typing.NDArray[np.float64]:
+        return np.atleast_2d(detector_wcs.transform("world", "detector", ra, dec, x))
 
-    def trace_y(x: float) -> float:
-        return np.atleast_2d(detector_wcs.transform("world", "detector", ra, dec, x))[
-            0, :
-        ]
+    def trace_x(x: np.typing.NDArray[np.float64]) -> np.typing.NDArray[np.float64]:
+        return generic_trace(x)[1, :]
+
+    def trace_y(x: np.typing.NDArray[np.float64]) -> np.typing.NDArray[np.float64]:
+        return generic_trace(x)[0, :]
 
     return trace_x, trace_y
-
-
-def get_inverse_trace_model(trace_model, lambda_range, lambda_points=1000):
-
-    lambdas = np.linspace(*lambda_range, num=lambda_points)
-    trace_values = trace_model(lambdas)
-
-    return interp1d(trace_values, lambdas)
 
 
 def get_principal_axes(frame_3d: HDUList) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
