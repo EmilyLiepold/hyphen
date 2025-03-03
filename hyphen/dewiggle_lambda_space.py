@@ -540,7 +540,7 @@ def dewiggle_lambda_space(
 
     fit_params = min_fit_params.copy()
 
-    ## Build a baseline model with the minimum fit parameters
+    # Build a baseline model with the minimum fit parameters
     ww, ww0, jwm, bounds = build_wiggly_model(
         envelope,
         background_prototype,
@@ -567,7 +567,8 @@ def dewiggle_lambda_space(
         prior_gamma_order=0,
     ):
         # logger.info(
-        #     f"Performing fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
+        #     f"Performing fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order},
+        # {beta_order}, {gamma_order})"
         # )
         ww, ww0, jwm, bounds = build_wiggly_model(
             envelope,
@@ -583,9 +584,12 @@ def dewiggle_lambda_space(
             prior_gamma_order=prior_gamma_order,
         )
 
-        # logger.info(f'Initiated wiggle model with order = {order}, alpha = {alpha_order}, beta = {beta_order}, gamma = {gamma_order}')
+        # logger.info(f'Initiated wiggle model with
+        # order = {order}, alpha = {alpha_order}, beta = {beta_order},
+        # gamma = {gamma_order}')
         # print(
-        #     f"Failed to fit with order = {current_order}, alpha_order = {alpha_order}, beta_order = {beta_order}, gamma_order = {gamma_order}")
+        #     f"Failed to fit with order = {current_order}, alpha_order = {alpha_order},
+        #  beta_order = {beta_order}, gamma_order = {gamma_order}")
         xsol, xcov = curve_fit(
             ww,
             x_vals,
@@ -596,7 +600,8 @@ def dewiggle_lambda_space(
         )
         # logger.info('Fit model with order = %d', order)
         # logger.debug(
-        #     f"Successfully fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order}, {beta_order}, {gamma_order})"
+        #     f"Successfully fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order},
+        # {beta_order}, {gamma_order})"
         # )
         # logger.info(f'found xsol = {xsol}')
         # x2 = np.nanmean((ww(X_vals, *xsol) / y_for_fft - 1) ** 2) ** 0.5
@@ -609,7 +614,7 @@ def dewiggle_lambda_space(
     improving = True
 
     try:
-        xsol, xcov, x2, reduced_x2, ww, jwm = fit_wrapper(
+        xsol, _, x2, reduced_x2, ww, jwm = fit_wrapper(
             order=fit_params["order"],
             alpha_order=fit_params["alpha_order"],
             beta_order=fit_params["beta_order"],
@@ -640,14 +645,16 @@ def dewiggle_lambda_space(
         improving = False
 
         logger.info(
-            "--------------------------------------------------------------------------------"
+            80 * "-"
         )
         logger.info(
-            f"Current fit parameters are (O, 𝛼, 𝛽, 𝛾) = ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
+            f"Current fit parameters are (O, 𝛼, 𝛽, 𝛾) = ({fit_params['order']}, "
+            f"{fit_params['alpha_order']}, {fit_params['beta_order']}, "
+            f"{fit_params['gamma_order']})"
         )
         logger.info(f"  𝜒2 = {x2:.4f} and √𝜈  = {reduced_x2**0.5:.4f}")
         logger.info(
-            "--------------------------------------------------------------------------------"
+            80 * "-"
         )
         knobs_to_turn = ["order", "beta_order", "alpha_order", "gamma_order"]
         for knob in knobs_to_turn:
@@ -656,12 +663,13 @@ def dewiggle_lambda_space(
             if proposed_fit_params[knob] + 1 <= max_fit_params[knob]:
                 proposed_fit_params[knob] += 1
                 logger.info(
-                    f"    Trying ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
+                    f"    Trying ({fit_params['order']}, {fit_params['alpha_order']}, "
+                    f"{fit_params['beta_order']}, {fit_params['gamma_order']})"
                 )
                 try:
                     (
                         prop_xsol,
-                        prop_xcov,
+                        _,
                         prop_x2,
                         prop_reduced_x2,
                         prop_ww,
@@ -686,19 +694,22 @@ def dewiggle_lambda_space(
                         < reduced_x2**0.5 - sqrt_nu_improvement_threshold
                     ):
                         xsol = prop_xsol
-                        xcov = prop_xcov
+                        # xcov = prop_xcov
                         x2 = prop_x2
                         reduced_x2 = prop_reduced_x2
                         ww = prop_ww
                         jwm = prop_jwm
                         fit_params = proposed_fit_params
                         logger.info(
-                            f"      Adopting ({fit_params['order']}, {fit_params['alpha_order']}, {fit_params['beta_order']}, {fit_params['gamma_order']})"
+                            f"      Adopting ({fit_params['order']}, "
+                            f"{fit_params['alpha_order']}, "
+                            f"{fit_params['beta_order']}, "
+                            f"{fit_params['gamma_order']})"
                         )
                         improving = True
                         break
 
-                except:
+                except Exception:
                     logger.info("      !!! Fit Failed !!!")
 
     if plot:
@@ -711,12 +722,14 @@ def dewiggle_lambda_space(
         fig, axes = plt.subplots(5, 1, figsize=(10, 16))
 
         fig.suptitle(
-            f"{plot_label}\nx2 = {x2:.3f}, sqrt(nu) = {reduced_x2**0.5:.3f}, f = {f:.5f}"
+            f"{plot_label}\n"
+            f"x2 = {x2:.3f}, sqrt(nu) = {reduced_x2**0.5:.3f}, f = {f:.5f}"
         )
         # fig.suptitle(f'x2 = {x2:.2f}')
         axes[0].set_ylabel("Flux, arbitrary")
         axes[0].plot(lam, target_spectrum, label="Input Spectrum", c="k")
-        # axes[0].fill_between(lam, target_spectrum - noise_spectrum, target_spectrum + noise_spectrum, alpha=0.2, color="k")
+        # axes[0].fill_between(lam, target_spectrum - noise_spectrum, target_spectrum +
+        # noise_spectrum, alpha=0.2, color="k")
         axes[0].plot(
             lam,
             target_spectrum
@@ -726,14 +739,17 @@ def dewiggle_lambda_space(
         )
         axes[0].legend(fontsize=6)
         # axes[1].plot(lam, normalized_spectrum, label='Input Spectrum')
-        # axes[1].plot(lam[good_indices], normalized_spectrum[good_indices], label='Input Spectrum')
+        # axes[1].plot(lam[good_indices], normalized_spectrum[good_indices],
+        # label='Input Spectrum')
         axes[1].plot(x_vals, y_for_fft, label="Input Spectrum", c="k")
-        # axes[1].fill_between(X_vals, y_for_fft - noise_for_fft, y_for_fft + noise_for_fft, alpha=0.2, color="k")
+        # axes[1].fill_between(X_vals, y_for_fft - noise_for_fft, y_for_fft +
+        # noise_for_fft, alpha=0.2, color="k")
         # axes[2].plot(X_vals, y_for_fft, label='Input Spectrum')
         axes[1].plot(x_vals, ww(x_vals, *xsol), label="Full Model", c="g")
 
         # alpha = envelope_prototype(X_vals, *xsol[0:alpha_order + 1])
-        # gamma = envelope_prototype(X_vals, *xsol[alpha_order + 1: alpha_order + gamma_order + 2])
+        # gamma = envelope_prototype(X_vals, *xsol[alpha_order + 1: alpha_order +
+        # gamma_order + 2])
 
         ps_continuum = envelope(x_vals, *xsol[0 : fit_params["alpha_order"] + 1])
 
@@ -814,7 +830,8 @@ def dewiggle_lambda_space(
         axes[2].axhline(0, c="0.5", linestyle="--")
         axes[2].axhline(reduced_x2**0.5, c="0.5", linestyle="--")
 
-        # axes[3].plot(X_vals, residual_without_continuum, label="Wiggle without continuum", c="b")
+        # axes[3].plot(X_vals, residual_without_continuum, label="Wiggle without
+        # continuum", c="b")
 
         spectrum_without_continuum_interpolation = np.interp(
             x_vals, spectrum_without_continuum
@@ -854,7 +871,8 @@ def dewiggle_lambda_space(
         # axes[3].set_yscale('log')
         axes[4].set_ylabel("Flux, arbitrary")
         axes[4].plot(lam, target_spectrum, label="Input Spectrum", c="k")
-        # axes[2].plot(lam[good_indices], y_for_fft * normalization[good_indices], label='Input Spectrum',c='k')
+        # axes[2].plot(lam[good_indices], y_for_fft * normalization[good_indices],
+        # label='Input Spectrum',c='k')
         # axes[2].plot(X_vals, y_for_fft, label='Input Spectrum')
         axes[4].plot(
             lam,
@@ -883,7 +901,8 @@ def dewiggle_lambda_space(
             # print(jwm(*xsol)(med_px)[good_indices])
             # print(normalization_constant)
             # print(normalization)
-            # print(np.nanmin((normalization_constant * normalization * jwm(*xsol)(med_px))[good_indices]),
+            # print(np.nanmin((normalization_constant * normalization *
+            # jwm(*xsol)(med_px))[good_indices]),
             #     np.nanmax(target_spectrum[good_indices]))
             axes[4].set_ylim(
                 np.nanmin(
@@ -893,7 +912,7 @@ def dewiggle_lambda_space(
                 ),
                 np.nanmax(target_spectrum[good_indices]),
             )
-        except:
+        except Exception:
             axes[4].set_ylim(0, np.nanmax(target_spectrum[good_indices]))
 
         axes[4].set_xlim(axes[0].get_xlim())
