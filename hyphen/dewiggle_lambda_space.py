@@ -481,7 +481,11 @@ def dewiggle_lambda_space(
 
     med_px = trace_model[0][0](lam)
     med_px -= np.nanmedian(med_px)
-    inverse_model = partial(np.interp, xp=med_px[np.argsort(med_px)], fp=lam[np.argsort(med_px)])
+    inverse_model = partial(
+        np.interp,
+        xp=med_px[np.argsort(med_px)],
+        fp=lam[np.argsort(med_px)]
+    )
 
     background_normalization = np.nanmedian(
         np.polyval(background_pf, lam) / np.polyval(continuum_model, lam)
@@ -821,13 +825,13 @@ def dewiggle_lambda_space(
         fine_x_grid = np.linspace(np.min(x_vals), np.max(x_vals), 20 * len(x_vals))
 
         fine_grid_y_spec = np.interp(
-            fine_x_grid, 
-            x_vals[np.argsort(x_vals)], 
+            fine_x_grid,
+            x_vals[np.argsort(x_vals)],
             spectrum_without_continuum[np.argsort(x_vals)]
         )
         fine_grid_y_res = np.interp(
-            fine_x_grid, 
-            x_vals[np.argsort(x_vals)], 
+            fine_x_grid,
+            x_vals[np.argsort(x_vals)],
             residual_without_continuum[np.argsort(x_vals)]
         )
 
