@@ -823,6 +823,21 @@ def dewiggle_lambda_space(
         fine_grid_y_spec = np.interp(fine_x_grid, x_vals, spectrum_without_continuum)
         fine_grid_y_res = np.interp(fine_x_grid, x_vals, residual_without_continuum)
 
+        axes[2].plot(
+            fine_x_grid,
+            fine_grid_y_res,
+            label="plotted in red in fft panel",
+            c="g",
+        )
+
+        axes[2].plot(
+            fine_x_grid,
+            fine_grid_y_spec,
+            label="plotted in black in fft panel",
+            c="b",
+        )
+
+
         X_spec = fft(fine_grid_y_spec)
         X_res = fft(fine_grid_y_res)
         n = len(X_spec)
