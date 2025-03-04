@@ -1275,6 +1275,9 @@ def dewiggler_stack(
                     background_pf=pf_back,
                     min_fit_params=min_fit_params,
                     max_fit_params=max_fit_params,
+                    sqrt_nu_improvement_threshold=(
+                        fit_param_fractional_residual_improvement_threshold
+                    ),
                 )
             )
 

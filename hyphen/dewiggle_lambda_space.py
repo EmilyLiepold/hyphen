@@ -432,7 +432,7 @@ def dewiggle_lambda_space(
     background_pf=None,
     min_fit_params={"alpha_order": 0, "beta_order": 3, "gamma_order": 0, "order": 3},
     max_fit_params={"alpha_order": 0, "beta_order": 3, "gamma_order": 0, "order": 3},
-    sqrt_nu_improvement_threshold=0.001,
+    sqrt_nu_improvement_threshold=0.0001,
 ):
     """
     Given a trace_model and a target_spectrum, dewiggle the target_spectrum by
