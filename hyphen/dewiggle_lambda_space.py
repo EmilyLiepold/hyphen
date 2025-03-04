@@ -809,7 +809,7 @@ def dewiggle_lambda_space(
         ax_ylim = np.nanmax(np.abs(axes[2].get_ylim()))
         axes[2].set_ylim(-ax_ylim, ax_ylim)
 
-        axes[2].legend(fontsize=6)
+        
 
         axes[2].axhline(-(reduced_x2**0.5), c="0.5", linestyle="--")
         axes[2].axhline(0, c="0.5", linestyle="--")
@@ -824,10 +824,26 @@ def dewiggle_lambda_space(
         fine_grid_y_res = np.interp(fine_x_grid, x_vals, residual_without_continuum)
 
         axes[2].plot(
+            x_vals,
+            residual_without_continuum,
+            label="plotted in red in fft panel (source)",
+            c="g",
+            linestyle=':',
+        )
+
+        axes[2].plot(
             fine_x_grid,
             fine_grid_y_res,
             label="plotted in red in fft panel",
             c="g",
+        )
+
+        axes[2].plot(
+            x_vals,
+            spectrum_without_continuum,
+            label="plotted in black in fft panel (source)",
+            c="b",
+            linestyle=':',
         )
 
         axes[2].plot(
@@ -837,6 +853,8 @@ def dewiggle_lambda_space(
             c="b",
         )
 
+
+        axes[2].legend(fontsize=6)
 
         X_spec = fft(fine_grid_y_spec)
         X_res = fft(fine_grid_y_res)
