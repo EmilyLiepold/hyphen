@@ -646,8 +646,10 @@ def dewiggle_lambda_space(
             if proposed_fit_params[knob] + 1 <= max_fit_params[knob]:
                 proposed_fit_params[knob] += 1
                 logger.info(
-                    f"    Trying ({fit_params['order']}, {fit_params['alpha_order']}, "
-                    f"{fit_params['beta_order']}, {fit_params['gamma_order']})"
+                    f"    Trying ({proposed_fit_params['order']}, "
+                    f"{proposed_fit_params['alpha_order']}, "
+                    f"{proposed_fit_params['beta_order']}, "
+                    f"{proposed_fit_params['gamma_order']})"
                 )
                 try:
                     (
@@ -682,7 +684,7 @@ def dewiggle_lambda_space(
                         reduced_x2 = prop_reduced_x2
                         ww = prop_ww
                         jwm = prop_jwm
-                        fit_params = proposed_fit_params
+                        fit_params = proposed_fit_params.copy()
                         logger.info(
                             f"      Adopting ({fit_params['order']}, "
                             f"{fit_params['alpha_order']}, "
