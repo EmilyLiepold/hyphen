@@ -23,14 +23,17 @@ def identify_chip_gap(weight: np.typing.NDArray[np.float64]) -> tuple[int, int]:
 
     gaps = []
     in_gap = False
+
+    good_weight = ~(np.isnan(weight) | (weight == 0))
+
     current_gap = []
-    for i in range(len(weight)):
-        if (weight[i] == 0 or np.isnan(weight[i])) and not in_gap:
+    for i, gw in enumerate(good_weight):
+        if not gw and not in_gap:
             current_gap = [i]
             in_gap = True
-        elif (weight[i] == 0 or np.isnan(weight[i])) and in_gap:
+        elif not gw and in_gap:
             current_gap.append(i)
-        elif ~(weight[i] == 0 or np.isnan(weight[i])) and in_gap:
+        elif gw and in_gap:
             gaps.append(current_gap[:])
             current_gap = []
             in_gap = False
