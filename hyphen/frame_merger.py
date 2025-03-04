@@ -312,7 +312,8 @@ def frame_merge(
     if mask_gap_union:
         logger.info("Masking the union of the chip gap region across all frames.")
 
-        # Now we'd lke to find the pixels which bound the chip gap for each spaxel of each frame.
+        # Now we'd like to find the pixels which bound the chip gap for each spaxel
+        # of each frame.
         gap_edges = determine_gap_edges(
             weights, base_fn=f"{out_fn[:-4]}", recompute_gaps=recompute_gaps
         )
@@ -320,8 +321,9 @@ def frame_merge(
         # Cast to float so that we can assign NaN
         gap_edges = gap_edges.astype(float)
 
-        # Make sure that the gap regions we've identified align with the gap. Do this by ignoring any which starts
-        # before the spot where we think the gap should appear or ends after that spot.
+        # Make sure that the gap regions we've identified align with the gap.
+        # Do this by ignoring any which starts before the spot where we thinkn
+        # the gap should appear or ends after that spot.
 
         for i in range(weights.shape[0]):
             for j in range(weights.shape[2]):
@@ -375,7 +377,8 @@ def frame_merge(
 
     # We want to first determine the flux and variance per contributing spaxel.
 
-    # TODO This should really be done by reading off from the files rather than hardcoding a pixel size
+    # TODO This should really be done by reading off from the files rather than
+    # hardcoding a pixel size
     # TODO this region should also be a bit more documented and cleaned.
     xaxis = 0.05 * (np.arange(fluxes.shape[2]) - center_pixel_for_plots[1])
     yaxis = 0.05 * (np.arange(fluxes.shape[3]) - center_pixel_for_plots[0])
@@ -500,13 +503,19 @@ def frame_merge(
                 fluxes[:, flat_x[rsort[j]], flat_y[rsort[j]]],
                 raw_weights[:, :, flat_x[rsort[j]], flat_y[rsort[j]]],
                 weights[:, flat_x[rsort[j]], flat_y[rsort[j]]],
-                title=f'pixel {flat_x[rsort[j]], flat_y[rsort[j]]}, R = {r[flat_x[rsort[j]], flat_y[rsort[j]]]}"',
+                title=(
+                    f'pixel {flat_x[rsort[j]], flat_y[rsort[j]]}, '
+                    f'R = {r[flat_x[rsort[j]], flat_y[rsort[j]]]}"'
+                ),
             )
 
             build_spaxel_spectra_diagnostics(
                 pdf,
                 raw_fluxes[:, :, flat_x[rsort[j]], flat_y[rsort[j]]],
-                title=f'index {j}, pixel {flat_x[rsort[j]], flat_y[rsort[j]]}, R = {r[flat_x[rsort[j]], flat_y[rsort[j]]]}"',
+                title=(
+                    f'index {j}, pixel {flat_x[rsort[j]], flat_y[rsort[j]]}, '
+                    f'R = {r[flat_x[rsort[j]], flat_y[rsort[j]]]}"'
+                ),
             )
 
         pdf.close()
