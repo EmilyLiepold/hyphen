@@ -46,7 +46,12 @@ def identify_chip_gap(weight: np.typing.NDArray[np.float64]) -> tuple[int, int]:
     return long_gap[0], long_gap[-1]
 
 
-def load_frames(primary_fns, base_fn="", weights_fns=None, load_frames_from_disk=True):
+def load_frames(
+    primary_fns: list[list[str]], 
+    base_fn: str = "", 
+    weights_fns: (None | list[list[str]]) = None, 
+    load_frames_from_disk: bool = True
+):
     # Read in the data
     frames = [[fits.open(fn) for fn in ff] for ff in primary_fns]
     if weights_fns is not None:
