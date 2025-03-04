@@ -1196,7 +1196,7 @@ def dewiggler_stack(
         target_slices = [base_target_slice + s for s in slices_to_use]
 
         logger.debug(
-            f"This spaxel is estimated to be in slice {base_target_slice + 1}"
+            f"This spaxel is estimated to be in slice {base_target_slice + 1} "
             f"(fractional position {fp[0]:.2f})"
         )
 
@@ -1297,7 +1297,7 @@ def dewiggler_stack(
 
         if mask_bad_fits & (base_x2**0.5 > fractional_residual_threshold):
             logger.warning(
-                f"Couldn't find a solution with √𝜈 < {fractional_residual_threshold}."
+                f"Couldn't find a solution with √𝜈 < {fractional_residual_threshold}. "
                 f"Masking this pixel."
             )
             preferred_dewiggled_spectrum = np.nan * preferred_dewiggled_spectrum
