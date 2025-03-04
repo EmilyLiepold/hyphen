@@ -300,6 +300,7 @@ def frame_merge(
     recompute_gaps=False,
     gap_region=(1750, 2150),
     mask_file=None,
+    target_detectors=["nrs1", "nrs2"],
 ):
     if diagnostic_plot_filename == "":
         pdf = None
@@ -482,6 +483,10 @@ def frame_merge(
         np.prod(fluxes[:, nrs2_region[0] : nrs2_region[1], ...] == 0, axis=1),
         np.prod(np.isnan(fluxes[:, nrs2_region[0] : nrs2_region[1], ...]), axis=1),
     )
+
+    nrs1_data = np.logical_or(nrs1_data, ('nrs1' not in target_detectors))
+    nrs2_data = np.logical_or(nrs2_data, ('nrs2' not in target_detectors))
+
     have_both_sets = np.logical_and(nrs1_data, nrs2_data)
 
     # When we don't have both sets of data for a spaxel, mask it out for both detectors.
@@ -647,6 +652,7 @@ def parse_yaml_arguments_and_merge(getter):
         recompute_gaps=bool(getter("force_reload_gaps")),
         gap_region=getter("gap_region"),
         mask_file=getter("mask_filename"),
+        target_detectors=target_detectors,
     )
 
     return 0
