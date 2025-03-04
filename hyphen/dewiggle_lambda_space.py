@@ -529,10 +529,7 @@ def dewiggle_lambda_space(
     ww, ww0, jwm, bounds = build_wiggly_model(
         envelope,
         background_prototype,
-        order=fit_params["order"],
-        alpha_order=fit_params["alpha_order"],
-        gamma_order=fit_params["gamma_order"],
-        beta_order=fit_params["beta_order"],
+        fit_orders=fit_params,
     )
     xsol = [0] * len(ww0)
     xsol[1] = 1
@@ -558,15 +555,19 @@ def dewiggle_lambda_space(
         ww, ww0, jwm, bounds = build_wiggly_model(
             envelope,
             background_prototype,
-            order=order,
-            alpha_order=alpha_order,
-            gamma_order=gamma_order,
-            beta_order=beta_order,
+            fit_orders={
+                "alpha_order": alpha_order,
+                "beta_order": beta_order,
+                "gamma_order": gamma_order,
+                "order": order,
+            },
             prior_fit_sol=prior_fit_sol,
-            prior_order=prior_order,
-            prior_alpha_order=prior_alpha_order,
-            prior_beta_order=prior_beta_order,
-            prior_gamma_order=prior_gamma_order,
+            prior_fit_orders={
+                "alpha_order": prior_alpha_order,
+                "beta_order": prior_beta_order,
+                "gamma_order": prior_gamma_order,
+                "order": prior_order,
+            },
         )
 
         # logger.info(f'Initiated wiggle model with
@@ -615,10 +616,7 @@ def dewiggle_lambda_space(
         ww, ww0, jwm, bounds = build_wiggly_model(
             envelope,
             background_prototype,
-            order=3,
-            alpha_order=0,
-            beta_order=3,
-            gamma_order=0,
+            fit_orders=fit_params,
         )
         xsol = [0] * len(ww0)
         xsol[1] = 1
