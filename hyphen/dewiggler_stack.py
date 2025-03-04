@@ -272,8 +272,8 @@ def determine_reference_spectrum(
     )
 
     logger.info(
-        f'Using {len(reference_spectrum_indices[0])}'
-        f'spaxels between {inner_radius}-{outer_radius}'
+        f'Using {len(reference_spectrum_indices[0])} '
+        f'spaxels between {inner_radius}-{outer_radius} '
         f'to compute the reference spectrum'
     )
 
