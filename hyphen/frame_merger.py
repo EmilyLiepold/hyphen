@@ -1,5 +1,6 @@
 import argparse
 import logging
+from typing import Optional
 
 import numpy as np
 from astropy.io import fits
@@ -49,27 +50,29 @@ def identify_chip_gap(weight: np.typing.NDArray[np.float64]) -> tuple[int, int]:
 def load_frames(
     primary_fns: list[list[str]],
     base_fn: str = "",
-    weights_fns: (None | list[list[str]]) = None,
-    load_frames_from_disk: bool = True
+    weights_fns: Optional[list[list[str]]] = None,
+    load_frames_from_disk: bool = False,
     ) -> tuple[
-    np.typing.NDArray[np.float64],
-    np.typing.NDArray[np.float64],
-    np.typing.NDArray[np.float64],
-    np.typing.NDArray[np.float64],
-    list[list[fits.HDUList]]
-     ]:
+        np.typing.NDArray[np.float64],
+        np.typing.NDArray[np.float64],
+        np.typing.NDArray[np.float64],
+        np.typing.NDArray[np.float64],
+        list[list[fits.HDUList]]
+        ]:
 
     """
     Load frames from FITS files and optionally cache the results to disk.
 
     :param primary_fns: list[list[str]]
         A list of lists containing the file paths to the primary FITS files.
-    :param base_fn: str, optional
+    :param base_fn: str
         The base filename for caching the arrays to disk. Default is an empty string.
     :param weights_fns: list[list[str]] or None, optional
-        A list of lists containing the file paths to the weights FITS files. If None, the weights will be loaded from the primary files. Default is None.
+        A list of lists containing the file paths to the weights FITS files. If None,
+        the weights will be loaded from the primary files. Default is None.
     :param load_frames_from_disk: bool, optional
-        If True, load the frames from disk even if cached arrays are available. Default is True.
+        If True, load the frames from disk even if cached arrays are available. Default
+        is False.
 
     :return:
         A tuple containing the following elements:
@@ -87,10 +90,10 @@ def load_frames(
     else:
         frames_for_weights = None
 
-    fluxes = None
-    variances = None
-    dqs = None
-    weights = None
+    fluxes = np.empty(1, dtype=np.float64)
+    variances = np.empty(1, dtype=np.float64)
+    dqs = np.empty(1, dtype=np.float64)
+    weights = np.empty(1, dtype=np.float64)
 
     try:
         logger.info("Trying to load arrays from cached arrays")
@@ -136,8 +139,8 @@ def load_frames(
             np.save(f"{base_fn}variances.npy", variances)
             np.save(f"{base_fn}dqs.npy", dqs)
             np.save(f"{base_fn}weights.npy", weights)
-        except Exception as e:
-            assert False, f"Error {e} in file loading"
+        except (FileNotFoundError, IOError) as e:
+            raise RuntimeError(f"Error {e} in file loading")
 
     return fluxes, variances, dqs, weights, frames
 
