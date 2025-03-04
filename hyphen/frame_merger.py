@@ -371,6 +371,11 @@ def frame_merge(
         # Do this by ignoring any which starts before the spot where we thinkn
         # the gap should appear or ends after that spot.
 
+        if 'nrs1' not in target_detectors:
+            gap_region[0] = -1000000
+        if 'nrs2' not in target_detectors:
+            gap_region[1] = 1000000
+
         for i in range(weights.shape[0]):
             for j in range(weights.shape[2]):
                 for k in range(weights.shape[3]):
