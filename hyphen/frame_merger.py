@@ -12,8 +12,14 @@ from .helpers import wigglebar
 logger = logging.getLogger(__name__)
 
 
-def identify_chip_gap(weight):
-    # basically, we want to find the region with the longest contiguous w = 0 stretch
+def identify_chip_gap(weight: np.typing.NDArray[np.float64]) -> tuple[int, int]:
+    """
+    Identify the longest contiguous gap of zero or NaN values in the weight array.
+
+    :param weight: A numpy array of float64 values representing weights.
+    :return:  A tuple containing the start and end indices of the longest contiguous
+        gap of zero or NaN values.
+    """
 
     gaps = []
     in_gap = False
@@ -343,7 +349,8 @@ def frame_merge(
                         weights[i, :, j, k] = np.nan
                         gap_edges[1, i, j, k] = np.nan
 
-        # Now, we want to find the minimum and maximum valid gap starting index across the N frames
+        # Now, we want to find the minimum and maximum valid gap starting index
+        # across the N frames
         min_gap_edge = np.nanmin(gap_edges[0, ...], axis=0).astype(int)
         max_gap_edge = np.nanmax(gap_edges[1, ...], axis=0).astype(int)
 
@@ -420,12 +427,13 @@ def frame_merge(
             ] = np.nan
 
             logger.info(
-                f"Masking {frame_index}: ({flat_x[rsort[px_index]]}, {flat_y[rsort[px_index]]})"
+                f"Masking {frame_index}: "
+                f"({flat_x[rsort[px_index]]}, {flat_y[rsort[px_index]]})"
             )
 
     # Now we want to determine whether we have data from both detectors.
-    # We'll do this by checking that the product of the fluxes in broad regions in the middle of each detector are
-    # all nan or all 0.
+    # We'll do this by checking that the product of the fluxes in broad regions in the
+    # middle of each detector are all nan or all 0.
 
     nrs1_data = ~np.logical_or(
         np.prod(fluxes[:, nrs1_region[0] : nrs1_region[1], ...] == 0, axis=1),
