@@ -481,7 +481,7 @@ def dewiggle_lambda_space(
 
     med_px = trace_model[0][0](lam)
     med_px -= np.nanmedian(med_px)
-    inverse_model = np.interp(med_px, lam)
+    inverse_model = partial(np.interp, xp=med_px, fp=lam)
 
     background_normalization = np.nanmedian(
         np.polyval(background_pf, lam) / np.polyval(continuum_model, lam)
@@ -818,17 +818,10 @@ def dewiggle_lambda_space(
         # axes[3].plot(X_vals, residual_without_continuum, label="Wiggle without
         # continuum", c="b")
 
-        spectrum_without_continuum_interpolation = np.interp(
-            x_vals, spectrum_without_continuum
-        )
-        residual_without_continuum_interpolation = np.interp(
-            x_vals, residual_without_continuum
-        )
-
         fine_x_grid = np.linspace(np.min(x_vals), np.max(x_vals), 20 * len(x_vals))
 
-        fine_grid_y_spec = spectrum_without_continuum_interpolation(fine_x_grid)
-        fine_grid_y_res = residual_without_continuum_interpolation(fine_x_grid)
+        fine_grid_y_spec = np.interp(fine_x_grid, x_vals, spectrum_without_continuum)
+        fine_grid_y_res = np.interp(fine_x_grid, x_vals, residual_without_continuum)
 
         X_spec = fft(fine_grid_y_spec)
         X_res = fft(fine_grid_y_res)
