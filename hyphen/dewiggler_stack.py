@@ -1397,7 +1397,9 @@ def parse_yaml_arguments_and_dewiggle(getter):
             )
 
             logger.info(
-                f'Beginning dewiggler task {getter("label", "")} on {input_3d_prototype.replace('DETECTOR', target_detector).replace('FRAME', target_frame).split('/')[-1]}'
+                f'Beginning dewiggler task {getter("label", "")} on '
+                f'{input_3d_prototype.replace("DETECTOR", target_detector)
+                    .replace("FRAME", target_frame).split("/")[-1]}'
             )
 
             dewiggler_stack(
