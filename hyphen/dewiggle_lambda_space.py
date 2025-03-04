@@ -481,7 +481,7 @@ def dewiggle_lambda_space(
 
     med_px = trace_model[0][0](lam)
     med_px -= np.nanmedian(med_px)
-    inverse_model = partial(np.interp, xp=med_px, fp=lam)
+    inverse_model = partial(np.interp, xp=med_px[np.argsort(med_px)], fp=lam[np.argsort(med_px)])
 
     background_normalization = np.nanmedian(
         np.polyval(background_pf, lam) / np.polyval(continuum_model, lam)
@@ -809,6 +809,8 @@ def dewiggle_lambda_space(
         ax_ylim = np.nanmax(np.abs(axes[2].get_ylim()))
         axes[2].set_ylim(-ax_ylim, ax_ylim)
 
+        axes[2].legend(fontsize=6)
+
         axes[2].axhline(-(reduced_x2**0.5), c="0.5", linestyle="--")
         axes[2].axhline(0, c="0.5", linestyle="--")
         axes[2].axhline(reduced_x2**0.5, c="0.5", linestyle="--")
@@ -818,41 +820,16 @@ def dewiggle_lambda_space(
 
         fine_x_grid = np.linspace(np.min(x_vals), np.max(x_vals), 20 * len(x_vals))
 
-        fine_grid_y_spec = np.interp(fine_x_grid, x_vals[np.argsort(x_vals)], spectrum_without_continuum[np.argsort(x_vals)])
-        fine_grid_y_res = np.interp(fine_x_grid, x_vals[np.argsort(x_vals)], residual_without_continuum[np.argsort(x_vals)])
-
-        axes[2].plot(
-            x_vals,
-            residual_without_continuum,
-            label="plotted in red in fft panel (source)",
-            c="g",
-            linestyle=':',
+        fine_grid_y_spec = np.interp(
+            fine_x_grid, 
+            x_vals[np.argsort(x_vals)], 
+            spectrum_without_continuum[np.argsort(x_vals)]
         )
-
-        axes[2].plot(
-            fine_x_grid,
-            fine_grid_y_res,
-            label="plotted in red in fft panel",
-            c="g",
+        fine_grid_y_res = np.interp(
+            fine_x_grid, 
+            x_vals[np.argsort(x_vals)], 
+            residual_without_continuum[np.argsort(x_vals)]
         )
-
-        axes[2].plot(
-            x_vals,
-            spectrum_without_continuum,
-            label="plotted in black in fft panel (source)",
-            c="b",
-            linestyle=':',
-        )
-
-        axes[2].plot(
-            fine_x_grid,
-            fine_grid_y_spec,
-            label="plotted in black in fft panel",
-            c="b",
-        )
-
-
-        axes[2].legend(fontsize=6)
 
         X_spec = fft(fine_grid_y_spec)
         X_res = fft(fine_grid_y_res)
