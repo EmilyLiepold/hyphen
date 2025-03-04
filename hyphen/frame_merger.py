@@ -47,11 +47,39 @@ def identify_chip_gap(weight: np.typing.NDArray[np.float64]) -> tuple[int, int]:
 
 
 def load_frames(
-    primary_fns: list[list[str]], 
-    base_fn: str = "", 
-    weights_fns: (None | list[list[str]]) = None, 
+    primary_fns: list[list[str]],
+    base_fn: str = "",
+    weights_fns: (None | list[list[str]]) = None,
     load_frames_from_disk: bool = True
-):
+    ) -> tuple[
+    np.typing.NDArray[np.float64],
+    np.typing.NDArray[np.float64],
+    np.typing.NDArray[np.float64],
+    np.typing.NDArray[np.float64],
+    list[list[fits.HDUList]]
+     ]:
+
+    """
+    Load frames from FITS files and optionally cache the results to disk.
+
+    :param primary_fns: list[list[str]]
+        A list of lists containing the file paths to the primary FITS files.
+    :param base_fn: str, optional
+        The base filename for caching the arrays to disk. Default is an empty string.
+    :param weights_fns: list[list[str]] or None, optional
+        A list of lists containing the file paths to the weights FITS files. If None, the weights will be loaded from the primary files. Default is None.
+    :param load_frames_from_disk: bool, optional
+        If True, load the frames from disk even if cached arrays are available. Default is True.
+
+    :return:
+        A tuple containing the following elements:
+        - fluxes (np.typing.NDArray[np.float64]): The flux arrays.
+        - variances (np.typing.NDArray[np.float64]): The variance arrays.
+        - dqs (np.typing.NDArray[np.float64]): The data quality arrays.
+        - weights (np.typing.NDArray[np.float64]): The weight arrays.
+        - frames (list[list[fits.HDUList]]): The list of FITS HDUList objects.
+    """
+
     # Read in the data
     frames = [[fits.open(fn) for fn in ff] for ff in primary_fns]
     if weights_fns is not None:
