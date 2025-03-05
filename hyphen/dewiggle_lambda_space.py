@@ -426,6 +426,7 @@ def dewiggle_lambda_space(
     lam,
     target_spectrum,
     dq_spectrum,
+    target_maskarray=None,
     noise_spectrum=None,
     plot=False,
     plot_label="",
@@ -478,6 +479,8 @@ def dewiggle_lambda_space(
         )
         * (normalized_spectrum > np.nanpercentile(normalized_spectrum[good_indices], 1))
     )
+    if target_maskarray is not None:
+        good_indices = good_indices * target_maskarray
 
     med_px = trace_model[0][0](lam)
     med_px -= np.nanmedian(med_px)

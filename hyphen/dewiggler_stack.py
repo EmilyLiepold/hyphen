@@ -14,7 +14,7 @@ from stdatamodels.jwst.datamodels import ImageModel
 from jwst.assign_wcs import nrs_ifu_wcs
 from joblib import delayed
 import dill as d
-from typing import Callable
+from typing import Callable, Optional
 
 from .tracer_helpers import find_bars, infer_fractional_position
 from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
@@ -1014,6 +1014,7 @@ def dewiggler_stack(
     slices_to_use: list = [0, -1, 1],
     reference_spectra_percentile_cut: float = 1,
     try_different_slice_threshold: float = 0.025,
+    weight_based_masking_threshold: Optional[float | None] = 0.5,
 ) -> object:
     """
     :type slices_to_use: list
@@ -1039,6 +1040,7 @@ def dewiggler_stack(
     :param target_wiggle_pixels: A list of specific pixels to dewiggle (e.g., as a diagnostic). If not provided, the code will use all pixels within the dewiggling radius.
     :param mask_bad_fits: If True, replace the spectra in the output cube with NaNs if the fit is bad.
     :param reference_spectra_percentile_cut: When constructing the reference spectra, ignore pixels in the top Nth or bottom Nth percentile. 0 here corresponds to no cut..
+    :param weight_based_masking_threshold: Perform a masking of the spectra based on the weights. If the weight is below this fraction of the median weight, the pixel will be masked. 
     :return: The plot object containing all diagnostics.
     """
 
@@ -1205,6 +1207,20 @@ def dewiggler_stack(
             f"{[t + 1 for t in target_slices]}"
         )
 
+        if weight_based_masking_threshold is not None:
+            weight_spectrum = frame_3d[4].data[:, target_index[0], target_index[1]]
+            median_weight = np.nanmedian(weight_spectrum[weight_spectrum > 0.0])
+            weight_based_mask = (
+                weight_spectrum > weight_based_masking_threshold * median_weight
+            )
+
+        else:
+            logger.debug("Weight-based masking is disabled.")
+            weight_based_mask = None
+        
+
+
+
         # find world coordinates for the target pixel
         world_coords = frame_3d_wcs.pixel_to_world(
             target_index[1], target_index[0], 1000
@@ -1278,6 +1294,7 @@ def dewiggler_stack(
                     sqrt_nu_improvement_threshold=(
                         fit_param_fractional_residual_improvement_threshold
                     ),
+                    target_maskarray=weight_based_mask,
                 )
             )
 
