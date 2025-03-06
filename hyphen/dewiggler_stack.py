@@ -1358,12 +1358,12 @@ def dewiggler_stack(
 
         # Compute the amplitudes of the fft modes.
 
-        fft_freq = xsols[4]['freq']
+        fft_freq = x[4]['freq']
         p1_indices = (fft_freq[:] >= 1 - fft_order_width) & (fft_freq[:] <= 1 + fft_order_width)
         p32_indices = (fft_freq[:] >= 1.5 - fft_order_width) & (fft_freq[:] <= 1.5 + fft_order_width)
 
-        p1 = np.sum(np.abs(xsols[4]['residual_fft'][p1_indices])**2)
-        p32 = np.sum(np.abs(xsols[4]['residual_fft'][p32_indices])**2)
+        p1 = np.sum(np.abs(x[4]['residual_fft'][p1_indices])**2)
+        p32 = np.sum(np.abs(x[4]['residual_fft'][p32_indices])**2)
 
         if p1 / p32 > power_ratio_threshold:
             bad_fit = True
