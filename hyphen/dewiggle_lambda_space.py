@@ -704,6 +704,50 @@ def dewiggle_lambda_space(
                 except Exception:
                     logger.info("      !!! Fit Failed !!!")
 
+    ps_continuum = envelope(x_vals, *xsol[0 : fit_params["alpha_order"] + 1])
+
+    gal_continuum = background_prototype(x_vals) * envelope(
+        x_vals,
+        *xsol[
+            fit_params["alpha_order"]
+            + 1 : fit_params["alpha_order"]
+            + fit_params["gamma_order"]
+            + 2
+        ],
+    )
+
+    spectrum_without_continuum = y_for_fft - ps_continuum - gal_continuum
+    residual_without_continuum = (
+        y_for_fft - ps_continuum - gal_continuum - jwm(*xsol)(x_vals)
+    )
+
+    fine_x_grid = np.linspace(np.min(x_vals), np.max(x_vals), 20 * len(x_vals))
+
+    fine_grid_y_spec = np.interp(
+        fine_x_grid,
+        x_vals[np.argsort(x_vals)],
+        spectrum_without_continuum[np.argsort(x_vals)]
+    )
+    fine_grid_y_res = np.interp(
+        fine_x_grid,
+        x_vals[np.argsort(x_vals)],
+        residual_without_continuum[np.argsort(x_vals)]
+    )
+
+    X_spec = fft(fine_grid_y_spec)
+    X_res = fft(fine_grid_y_res)
+    n = len(X_spec)
+    dt = fine_x_grid[1] - fine_x_grid[0]
+    freq = np.fft.fftfreq(n, d=dt)
+
+    freq_trim = 5
+
+    freq_we_care_about = (freq[:] > -freq_trim) & (freq[:] < freq_trim)
+
+    freq = freq[freq_we_care_about]
+    X_spec = X_spec[freq_we_care_about]
+    X_res = X_res[freq_we_care_about]
+
     if plot:
         logger.debug("Beginning plots")
         envelope_args, wiggle_args, f = parse_wiggle_args(
@@ -717,11 +761,9 @@ def dewiggle_lambda_space(
             f"{plot_label}\n"
             f"x2 = {x2:.3f}, sqrt(nu) = {reduced_x2**0.5:.3f}, f = {f:.5f}"
         )
-        # fig.suptitle(f'x2 = {x2:.2f}')
+
         axes[0].set_ylabel("Flux, arbitrary")
         axes[0].plot(lam, target_spectrum, label="Input Spectrum", c="k")
-        # axes[0].fill_between(lam, target_spectrum - noise_spectrum, target_spectrum +
-        # noise_spectrum, alpha=0.2, color="k")
         axes[0].plot(
             lam,
             target_spectrum
@@ -729,22 +771,11 @@ def dewiggle_lambda_space(
             label="Dewiggled Spectrum",
             c="r",
         )
+
         axes[0].legend(fontsize=6)
-        # axes[1].plot(lam, normalized_spectrum, label='Input Spectrum')
-        # axes[1].plot(lam[good_indices], normalized_spectrum[good_indices],
-        # label='Input Spectrum')
+
         axes[1].plot(x_vals, y_for_fft, label="Input Spectrum", c="k")
-        # axes[1].fill_between(X_vals, y_for_fft - noise_for_fft, y_for_fft +
-        # noise_for_fft, alpha=0.2, color="k")
-        # axes[2].plot(X_vals, y_for_fft, label='Input Spectrum')
         axes[1].plot(x_vals, ww(x_vals, *xsol), label="Full Model", c="g")
-
-        # alpha = envelope_prototype(X_vals, *xsol[0:alpha_order + 1])
-        # gamma = envelope_prototype(X_vals, *xsol[alpha_order + 1: alpha_order +
-        # gamma_order + 2])
-
-        ps_continuum = envelope(x_vals, *xsol[0 : fit_params["alpha_order"] + 1])
-
         axes[1].plot(
             x_vals,
             ps_continuum,
@@ -752,17 +783,6 @@ def dewiggle_lambda_space(
             c="0.5",
             linestyle=":",
         )
-
-        gal_continuum = background_prototype(x_vals) * envelope(
-            x_vals,
-            *xsol[
-                fit_params["alpha_order"]
-                + 1 : fit_params["alpha_order"]
-                + fit_params["gamma_order"]
-                + 2
-            ],
-        )
-
         axes[1].plot(
             x_vals,
             gal_continuum,
@@ -785,14 +805,12 @@ def dewiggle_lambda_space(
         axes[1].plot(
             x_vals, -jwm(*xsol)(x_vals, envelope_only=True), c="b", linestyle=":"
         )
-
         axes[1].plot(
             x_vals, y_for_fft - jwm(*xsol)(x_vals), label="Dewiggled Spectrum", c="r"
         )
+
         axes[1].legend(fontsize=6)
         axes[1].set_ylabel("Flux, normalized by central continuum")
-
-        axes[2].set_ylabel("Residual")
 
         axes[2].plot(
             x_vals,
@@ -800,12 +818,6 @@ def dewiggle_lambda_space(
             label="Residual (black - green)",
             c="r",
         )
-
-        spectrum_without_continuum = y_for_fft - ps_continuum - gal_continuum
-        residual_without_continuum = (
-            y_for_fft - ps_continuum - gal_continuum - jwm(*xsol)(x_vals)
-        )
-
         axes[2].plot(
             x_vals,
             spectrum_without_continuum,
@@ -817,56 +829,26 @@ def dewiggle_lambda_space(
         axes[2].set_ylim(-ax_ylim, ax_ylim)
 
         axes[2].legend(fontsize=6)
-
+        axes[2].set_ylabel("Residual")
         axes[2].axhline(-(reduced_x2**0.5), c="0.5", linestyle="--")
         axes[2].axhline(0, c="0.5", linestyle="--")
         axes[2].axhline(reduced_x2**0.5, c="0.5", linestyle="--")
 
-        # axes[3].plot(X_vals, residual_without_continuum, label="Wiggle without
-        # continuum", c="b")
-
-        fine_x_grid = np.linspace(np.min(x_vals), np.max(x_vals), 20 * len(x_vals))
-
-        fine_grid_y_spec = np.interp(
-            fine_x_grid,
-            x_vals[np.argsort(x_vals)],
-            spectrum_without_continuum[np.argsort(x_vals)]
-        )
-        fine_grid_y_res = np.interp(
-            fine_x_grid,
-            x_vals[np.argsort(x_vals)],
-            residual_without_continuum[np.argsort(x_vals)]
-        )
-
-        X_spec = fft(fine_grid_y_spec)
-        X_res = fft(fine_grid_y_res)
-        n = len(X_spec)
-        dt = fine_x_grid[1] - fine_x_grid[0]
-        freq = np.fft.fftfreq(n, d=dt)
-
-        freq_trim = 5
-
-        freq_we_care_about = (freq[:] > -freq_trim) & (freq[:] < freq_trim)
-
         axes[3].stem(
-            freq[freq_we_care_about],
-            (np.abs(X_spec) / np.nanmax(np.abs(X_spec)))[freq_we_care_about],
+            freq,
+            (np.abs(X_spec) / np.nanmax(np.abs(X_spec))),
             "k",
         )
         axes[3].stem(
-            freq[freq_we_care_about],
-            (np.abs(X_res) / np.nanmax(np.abs(X_spec)))[freq_we_care_about],
+            freq,
+            (np.abs(X_res) / np.nanmax(np.abs(X_spec))),
             "r",
         )
 
         axes[3].set_xlim(-freq_trim, freq_trim)
         axes[3].set_ylim(0, 1.0)
-        # axes[3].set_yscale('log')
         axes[4].set_ylabel("Flux, arbitrary")
         axes[4].plot(lam, target_spectrum, label="Input Spectrum", c="k")
-        # axes[2].plot(lam[good_indices], y_for_fft * normalization[good_indices],
-        # label='Input Spectrum',c='k')
-        # axes[2].plot(X_vals, y_for_fft, label='Input Spectrum')
         axes[4].plot(
             lam,
             normalization_constant * normalization * ww(med_px, *xsol),
@@ -887,16 +869,7 @@ def dewiggle_lambda_space(
             c="r",
         )
         axes[4].legend(fontsize=6)
-
-        # print(xsol, alpha_order, beta_order, gamma_order, current_order)
-
         try:
-            # print(jwm(*xsol)(med_px)[good_indices])
-            # print(normalization_constant)
-            # print(normalization)
-            # print(np.nanmin((normalization_constant * normalization *
-            # jwm(*xsol)(med_px))[good_indices]),
-            #     np.nanmax(target_spectrum[good_indices]))
             axes[4].set_ylim(
                 np.nanmin(
                     (normalization_constant * normalization * jwm(*xsol)(med_px))[
@@ -924,4 +897,5 @@ def dewiggle_lambda_space(
         reduced_x2,
         xsol,
         fit_params,
+        {'freq': freq, 'spectrum_fft': X_spec, 'residual_fft': X_res},
     )
