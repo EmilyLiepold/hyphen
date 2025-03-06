@@ -1015,6 +1015,8 @@ def dewiggler_stack(
     reference_spectra_percentile_cut: float = 1,
     try_different_slice_threshold: float = 0.025,
     weight_based_masking_threshold: Optional[float | None] = 0.5,
+    fft_order_width=0.1,
+    power_ratio_threshold=1.5,
 ) -> object:
     """
     :type slices_to_use: list
@@ -1353,10 +1355,23 @@ def dewiggler_stack(
 
         if fit_x2**0.5 > fractional_residual_threshold:
             bad_fit = True
-        
+
+        # Compute the amplitudes of the fft modes.
+
+        fft_freq = xsols[4]['freq']
+        p1_indices = (fft_freq[:] >= 1 - fft_order_width) & (fft_freq[:] <= 1 + fft_order_width)
+        p32_indices = (fft_freq[:] >= 1.5 - fft_order_width) & (fft_freq[:] <= 1.5 + fft_order_width)
+
+        p1 = np.sum(np.abs(xsols[4]['residual_fft'][p1_indices])**2)
+        p32 = np.sum(np.abs(xsols[4]['residual_fft'][p32_indices])**2)
+
+        if p1 / p32 > power_ratio_threshold:
+            bad_fit = True
+
         if mask_bad_fits & bad_fit:
             logger.warning(
-                f"Pixel ({target_index[0]}, {target_index[1]}) √𝜈 = {fit_x2**0.5}."
+                f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = {fit_x2**0.5}."
+                f"    and P(1) / P(3/2) = {p1 / p32}."
                 f"Masking this pixel."
             )
             preferred_dewiggled_spectrum = np.nan * preferred_dewiggled_spectrum
