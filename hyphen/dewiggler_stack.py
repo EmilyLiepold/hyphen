@@ -1257,6 +1257,7 @@ def dewiggler_stack(
         base_x2 = 1e10
         preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
         preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
+        preferred_wiggle_fft = {}
 
         logger.debug(f"Starting the dewiggler for index {i}!")
         for tindex, target_slice in enumerate(target_slices):
@@ -1279,7 +1280,7 @@ def dewiggler_stack(
                 [trace_models[tindex][0], trace_models[tindex][0]],
             ]
 
-            wiggle_model, dewiggled_spectrum, x2, xsol, model_details = (
+            wiggle_model, dewiggled_spectrum, x2, xsol, model_details, wiggle_fft = (
                 dewiggle_lambda_space(
                     model_trace,
                     pf,
@@ -1311,15 +1312,16 @@ def dewiggler_stack(
                 base_x2 = x2
                 preferred_wiggle_model = wiggle_model
                 preferred_dewiggled_spectrum = dewiggled_spectrum
+                preferred_wiggle_fft = wiggle_fft
 
-        if mask_bad_fits & (base_x2**0.5 > fractional_residual_threshold):
-            logger.warning(
-                f"Couldn't find a solution with √𝜈 < {fractional_residual_threshold}. "
-                f"Masking this pixel."
-            )
-            preferred_dewiggled_spectrum = np.nan * preferred_dewiggled_spectrum
-
-        return xsol, model_details, target_index, preferred_dewiggled_spectrum
+        return (
+            xsol,
+            model_details,
+            target_index,
+            preferred_dewiggled_spectrum,
+            preferred_wiggle_fft,
+            base_x2,
+        )
 
     if get_plot_status(plot):
         logger.warning(
@@ -1345,6 +1347,19 @@ def dewiggler_stack(
     for x in xsols:
         target_index = x[2]
         preferred_dewiggled_spectrum = x[3]
+        fit_x2 = x[5]
+
+        bad_fit = False
+
+        if fit_x2**0.5 > fractional_residual_threshold:
+            bad_fit = True
+        
+        if mask_bad_fits & bad_fit:
+            logger.warning(
+                f"Pixel ({target_index[0]}, {target_index[1]}) √𝜈 = {fit_x2**0.5}."
+                f"Masking this pixel."
+            )
+            preferred_dewiggled_spectrum = np.nan * preferred_dewiggled_spectrum
 
         frame_3d[1].data[
             :, target_index[0], target_index[1]
