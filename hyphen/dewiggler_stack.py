@@ -1364,16 +1364,16 @@ def dewiggler_stack(
 
         p1 = np.sum(np.abs(x[4]['residual_fft'][p1_indices])**2)
         p32 = np.sum(np.abs(x[4]['residual_fft'][p32_indices])**2)
+        logger.info('')
 
         if p1 / p32 > power_ratio_threshold:
             bad_fit = True
 
+        logger.info(f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = {fit_x2**0.5}."
+                    f"    and P(1) / P(3/2) = {p1 / p32}.")
+
         if mask_bad_fits & bad_fit:
-            logger.warning(
-                f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = {fit_x2**0.5}."
-                f"    and P(1) / P(3/2) = {p1 / p32}."
-                f"Masking this pixel."
-            )
+            logger.warning("Masking this pixel.")
             preferred_dewiggled_spectrum = np.nan * preferred_dewiggled_spectrum
 
         frame_3d[1].data[
