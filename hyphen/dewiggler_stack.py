@@ -1016,7 +1016,7 @@ def dewiggler_stack(
     try_different_slice_threshold: float = 0.025,
     weight_based_masking_threshold: Optional[float | None] = 0.5,
     fft_order_width=0.1,
-    power_ratio_threshold=1.5,
+    power_ratio_threshold=3.0,
 ) -> object:
     """
     :type slices_to_use: list
@@ -1346,36 +1346,57 @@ def dewiggler_stack(
 
     xsols = d.load(open(xsol_fn, "rb"))
 
-    for x in xsols:
-        target_index = x[2]
-        preferred_dewiggled_spectrum = x[3]
-        fit_x2 = x[5]
+    for xindex, x in enumerate(xsols):
+    
 
         bad_fit = False
 
-        if fit_x2**0.5 > fractional_residual_threshold:
-            bad_fit = True
+        retries = 0
+        retry_allowed = True
 
-        # Compute the amplitudes of the fft modes.
+        while retry_allowed:
 
-        fft_freq = x[4]['freq']
-        p1_indices = (fft_freq[:] >= 1 - fft_order_width) & (fft_freq[:] <= 1 + fft_order_width)
-        p32_indices = (fft_freq[:] >= 1.5 - fft_order_width) & (fft_freq[:] <= 1.5 + fft_order_width)
+            if retries == 1:
+                retry_allowed = False
 
-        p1 = np.mean(np.abs(x[4]['residual_fft'][p1_indices]))
-        p32 = np.mean(np.abs(x[4]['residual_fft'][p32_indices]))
-        logger.info('')
+            retries += 1
 
-        if p1 / p32 > power_ratio_threshold:
-            bad_fit = True
+            target_index = x[2]
+            preferred_dewiggled_spectrum = x[3]
+            fit_x2 = x[5]
 
-        logger.info(f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = {fit_x2**0.5:.4f}."
-                    f"    and P(1) / P(3/2) = {p1 / p32:.4f}.")
 
-        if mask_bad_fits & bad_fit:
-            logger.warning("Masking this pixel.")
-            preferred_dewiggled_spectrum = np.nan * preferred_dewiggled_spectrum
+            if fit_x2**0.5 > fractional_residual_threshold:
+                bad_fit = True
 
+            # Compute the amplitudes of the fft modes.
+
+            fft_freq = x[4]['freq']
+            p1_indices = (fft_freq[:] >= 1 - fft_order_width) & (fft_freq[:] <= 1 + fft_order_width)
+            # p32_indices = (fft_freq[:] >= 1.5 - fft_order_width) & (fft_freq[:] <= 1.5 + fft_order_width)
+
+            p1 = np.mean(np.abs(x[4]['residual_fft'][p1_indices]))
+            pavg = np.mean(np.abs(x[4]['residual_fft']))
+            logger.info('')
+
+            if p1 / pavg > power_ratio_threshold:
+                bad_fit = True
+
+            logger.info(f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = {fit_x2**0.5:.4f}."
+                        f"    and P(1) / P(3/2) = {p1 / pavg:.4f}.")
+
+            if mask_bad_fits & bad_fit:
+                logger.warning("Masking this pixel.")
+                
+
+                if retry_allowed:
+                    frame_3d[1].data[:, target_index[0], target_index[1]] = preferred_dewiggled_spectrum
+                    x = dewiggle_main_loop(xindex)
+
+                else:
+                    preferred_dewiggled_spectrum = np.ones_like(preferred_dewiggled_spectrum) * np.nan
+
+        
         frame_3d[1].data[
             :, target_index[0], target_index[1]
         ] = preferred_dewiggled_spectrum
