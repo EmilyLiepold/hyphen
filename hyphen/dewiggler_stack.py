@@ -1348,7 +1348,6 @@ def dewiggler_stack(
 
     for xindex, x in enumerate(xsols):
     
-
         bad_fit = False
 
         retries = 0
@@ -1364,7 +1363,6 @@ def dewiggler_stack(
             target_index = x[2]
             preferred_dewiggled_spectrum = x[3]
             fit_x2 = x[5]
-
 
             if fit_x2**0.5 > fractional_residual_threshold:
                 bad_fit = True
@@ -1388,7 +1386,6 @@ def dewiggler_stack(
             if mask_bad_fits & bad_fit:
                 logger.warning("Masking this pixel.")
                 
-
                 if retry_allowed:
                     frame_3d[1].data[:, target_index[0], target_index[1]] = preferred_dewiggled_spectrum
                     x = dewiggle_main_loop(xindex)
