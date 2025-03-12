@@ -365,7 +365,7 @@ def determine_spaxel_distances(spatial_arr, target_pixel):
     return spaxel_distance
 
 
-def initialize_plot(plot: object) -> object:
+def initialize_plot(plot: str | PdfPages | None | bool) -> PdfPages | bool:
     """
     We'll save the plots to a pdfpages document
     Either `plot` is a string, in which case we'll save the plots to that file
@@ -374,11 +374,10 @@ def initialize_plot(plot: object) -> object:
     :param plot:
     :return:
     """
-    if type(plot) is str:
+    if isinstance(plot, str):
         logger.info(f"Saving plots to {plot}")
         plot = PdfPages(plot)
-        save_plot = True
-    elif plot is not None and plot is not False:
+    elif isinstance(plot, PdfPages):
         logger.info("Appending plots to provided pdf")
     else:
         logger.info("Not saving plots")
@@ -387,7 +386,7 @@ def initialize_plot(plot: object) -> object:
     return plot
 
 
-def get_plot_status(plot: object) -> bool:
+def get_plot_status(plot: PdfPages | bool | None) -> bool:
     """
     Get the status of the plot
     :param plot:
@@ -396,7 +395,7 @@ def get_plot_status(plot: object) -> bool:
     return bool(plot)
 
 
-def close_plot(plot: object) -> None:
+def close_plot(plot: PdfPages | bool | None) -> None:
     """
     Close the plot
     :param plot:
@@ -404,7 +403,8 @@ def close_plot(plot: object) -> None:
     """
     if not plot:
         return
-    plot.close()
+    if isinstance(plot, PdfPages):
+        plot.close()
 
 
 def _build_image_map(
@@ -461,7 +461,7 @@ def _build_image_map(
 
 
 def build_image_map(
-    plot: object,
+    plot: PdfPages | bool | None,
     axis_pixel: np.ndarray,
     axis_slice: np.ndarray,
     image: np.ndarray,
@@ -490,14 +490,15 @@ def build_image_map(
         background_reference_spectrum_radius,
     )
 
-    plot.savefig()
+    if isinstance(plot, PdfPages):
+        plot.savefig()
     plt.close()
 
     return None
 
 
 def build_reference_spectra_plot(
-    plot: object,
+    plot: PdfPages | bool | None,
     axis_spectral: np.ndarray,
     central_reference_spectrum: np.ndarray,
     smoothed_reference_spectrum: np.ndarray,
@@ -583,21 +584,22 @@ def build_reference_spectra_plot(
     axes[2].set_ylabel("Background / Central\n(Flux, arbitrary)")
 
     fig.subplots_adjust(left=0.15)
-    plot.savefig()
+    if isinstance(plot, PdfPages):
+        plot.savefig()
     plt.close()
 
     return None
 
 
 def build_bar_map_plot(
-    plot: object,
+    plot: PdfPages | bool | None,
     frame_2d: HDUList,
     bars: np.ndarray,
     frame_2d_shortname: str,
     detector: str,
-) -> object:
+     ) -> None:
     if not plot:
-        return
+        return None
 
     logger.info("Plotting the bars")
     fig, axes = plt.subplots(1, 1, figsize=(6, 6))
@@ -644,14 +646,15 @@ def build_bar_map_plot(
     axes.set_ylabel("x pixel")
     axes.set_xlabel("y pixel")
     axes.set_title(f"{frame_2d_shortname}", fontsize=8)
-    plot.savefig()
+    if isinstance(plot, PdfPages):
+        plot.savefig()
     plt.close()
 
     return None
 
 
 def build_spaxel_map_plot(
-    plot: object,
+    plot: PdfPages | bool | None,
     axis_pixel: np.ndarray,
     axis_slice: np.ndarray,
     axis_spectral: np.ndarray,
@@ -691,7 +694,6 @@ def build_spaxel_map_plot(
         + top_margin
     )
 
-    # fig, axes = plt.subplots(1 + len(target_slices), 1, figsize=(4, 4 * (1 + len(target_slices))))
     fig, axes = plt.subplots(
         1 + len(target_slices),
         1,
@@ -770,14 +772,15 @@ def build_spaxel_map_plot(
         axes[tindex + 1].set_aspect("auto")
         axes[tindex + 1].set_title(f"Slice {ts + 1}")
 
-    plot.savefig()
+    if isinstance(plot, PdfPages):
+        plot.savefig()
     plt.close()
 
     return None
 
 
 def build_population_diagnostics(
-    plot: object,
+    plot: PdfPages | bool | None,
     axis_pixel: np.ndarray,
     axis_slice: np.ndarray,
     image: np.ndarray,
@@ -790,10 +793,10 @@ def build_population_diagnostics(
     xsol,
     wiggly_pixels,
     diagnostic_fraction=1,
-) -> object:
+) -> None:
 
     if not plot:
-        return
+        return None
 
     target_panel_width = 3.0
     right_margin = 0.25
@@ -949,7 +952,6 @@ def build_population_diagnostics(
         horizontal_axis = 3600 * (axis_slice - axis_slice[target_pixel[0]])
         vertical_axis = 3600 * (axis_pixel - axis_pixel[target_pixel[1]])
 
-        ## Okay, so first, let's plot out alpha_0
         for windex in range(len(q)):
             overlay_image[
                 wiggly_pixels[0][::diagnostic_fraction][windex],
@@ -975,7 +977,8 @@ def build_population_diagnostics(
         axes[1].set_ylabel(f"{l}")
         axes[1].set_xlabel("Distance from target pixel, arcsec")
 
-        plot.savefig()
+        if isinstance(plot, PdfPages):
+            plot.savefig()
         plt.close()
     return None
 
@@ -985,7 +988,7 @@ def dewiggler_stack(
     frame_3d_filename: str,
     output_frame_filename: str,
     target_pixel: tuple[int, int] = (-1, -1),
-    plot: object = False,
+    plot: str | PdfPages | bool = False,
     dewiggling_radius: float = 0.5,
     central_reference_spectrum_radius: float = 0.2,
     smooth_model_poly_order: int = 5,
