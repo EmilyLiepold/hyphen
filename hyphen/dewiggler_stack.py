@@ -1023,29 +1023,57 @@ def dewiggler_stack(
 ) -> object:
     """
     :type slices_to_use: list
-    :param slices_to_use: This is a list of slice numbers to use for the dewiggling. We will estimate the slice number from the pixel location, then incrementally try the slices in this list. A zero here corrsponds to the estimated slice number and a negative number corresponds to one index lower than that estimate.
+    :param slices_to_use: This is a list of slice numbers to use for the dewiggling. We
+        will estimate the slice number from the pixel location, then incrementally try
+        the slices in this list. A zero here corrsponds to the estimated slice number
+        and a negative number corresponds to one index lower than that estimate.
     :param frame_2d_filename: This is the path to the 2D detector-frame fits file.
     :param frame_3d_filename: This is the path to the 3D rectified fits file.
     :param output_frame_filename: This is the path to the output 3D dewiggled fits file.
-    :param target_pixel: This is the central pixel associated with the point-source. If not provided, the code will use either the provided RA and Dec or attempt to find the peak of the median image.
-    :param plot: This is either a filename where a resultant pdf file will be placed or a pdfpages object where the plots will be appended.
-    :param dewiggling_radius: This is the radius in arcseconds within which the dewiggling will be performed.
-    :param central_reference_spectrum_radius: The point-source spectrum will be estimated from an average of pixels within this radius.
-    :param smooth_model_poly_order: The order of the polynomial used to smooth the reference spectra.
-    :param diagnostic_fraction: For faster diagnostics, only dewiggle every Nth pixel. For example, if diagnostic_fraction=10, only dewiggle every 10th pixel.
-    :param background_reference_spectrum_radii: The background spectrum will be estimated from an average of pixels between these radii.
-    :param fractional_residual_threshold: If the fractional residual is above this threshold, the fit is considered bad.
-    :param fit_param_fractional_residual_improvement_threshold: When iterating through the fit parameters, if the fractional residual improvement is below this threshold, the fit is not considered to be improved.
-    :param n_jobs: The number of jobs to use for parallel processing. If plotting is enabled, this is ignored.
-    :param perform_dewiggling: Flag whether to actually perform the dewiggling or to just diagnostics.
-    :param target_radec: The target Ra and Dec in degrees (ICRS) corresponding to the point source.
+    :param target_pixel: This is the central pixel associated with the point-source. If
+        not provided, the code will use either the provided RA and Dec or attempt to
+        find the peak of the median image.
+    :param plot: This is either a filename where a resultant pdf file will be placed or
+        a pdfpages object where the plots will be appended.
+    :param dewiggling_radius: This is the radius in arcseconds within which the
+        dewiggling will be performed.
+    :param central_reference_spectrum_radius: The point-source spectrum will be
+        estimated from an average of pixels within this radius.
+    :param smooth_model_poly_order: The order of the polynomial used to smooth the
+        reference spectra.
+    :param diagnostic_fraction: For faster diagnostics, only dewiggle every Nth pixel.
+        For example, if diagnostic_fraction=10, only dewiggle every 10th pixel.
+    :param background_reference_spectrum_radii: The background spectrum will be
+        estimated from an average of pixels between these radii.
+    :param fractional_residual_threshold: If the fractional residual is above this
+    threshold, the fit is considered bad.
+    :param fit_param_fractional_residual_improvement_threshold: When iterating through
+        the fit parameters, if the fractional residual improvement is below this
+        threshold, the fit is not considered to be improved.
+    :param n_jobs: The number of jobs to use for parallel processing. If plotting is
+        enabled, this is ignored.
+    :param perform_dewiggling: Flag whether to actually perform the dewiggling or to
+        just diagnostics.
+    :param target_radec: The target Ra and Dec in degrees (ICRS) corresponding to the
+        point source.
     :param use_cached_wcs: Use the cached WCS if available.
-    :param min_fit_params: A dictionary containing the minimum fit orders to use. The dictionary should include the keys 'alpha_order', 'beta_order', 'gamma_order', and 'order'.
-    :param max_fit_params: A dictionary containing the maximum fit orders to use. The dictionary should include the keys 'alpha_order', 'beta_order', 'gamma_order', and 'order'.
-    :param target_wiggle_pixels: A list of specific pixels to dewiggle (e.g., as a diagnostic). If not provided, the code will use all pixels within the dewiggling radius.
-    :param mask_bad_fits: If True, replace the spectra in the output cube with NaNs if the fit is bad.
-    :param reference_spectra_percentile_cut: When constructing the reference spectra, ignore pixels in the top Nth or bottom Nth percentile. 0 here corresponds to no cut..
-    :param weight_based_masking_threshold: Perform a masking of the spectra based on the weights. If the weight is below this fraction of the median weight, the pixel will be masked. 
+    :param min_fit_params: A dictionary containing the minimum fit orders to use. The
+        dictionary should include the keys 'alpha_order', 'beta_order', 'gamma_order',
+        and 'order'.
+    :param max_fit_params: A dictionary containing the maximum fit orders to use. The
+        dictionary should include the keys 'alpha_order', 'beta_order', 'gamma_order',
+        and 'order'.
+    :param target_wiggle_pixels: A list of specific pixels to dewiggle (e.g., as a
+        diagnostic). If not provided, the code will use all pixels within the
+        dewiggling radius.
+    :param mask_bad_fits: If True, replace the spectra in the output cube with NaNs if
+        the fit is bad.
+    :param reference_spectra_percentile_cut: When constructing the reference spectra,
+        ignore pixels in the top Nth or bottom Nth percentile. 0 here corresponds to no
+        cut.
+    :param weight_based_masking_threshold: Perform a masking of the spectra based on
+        the weights. If the weight is below this fraction of the median weight, the
+        pixel will be masked.
     :return: The plot object containing all diagnostics.
     """
 
@@ -1222,9 +1250,6 @@ def dewiggler_stack(
         else:
             logger.debug("Weight-based masking is disabled.")
             weight_based_mask = None
-        
-
-
 
         # find world coordinates for the target pixel
         world_coords = frame_3d_wcs.pixel_to_world(
@@ -1257,7 +1282,8 @@ def dewiggler_stack(
             central_reference_spectrum_radius,
         )
 
-        # For good measure, we'll try the de-wiggling on the slice before and after the target slice and use the best model of the three.
+        # For good measure, we'll try the de-wiggling on the slice before and after the
+        # target slice and use the best model of the three.
 
         base_x2 = 1e10
         preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
@@ -1270,14 +1296,15 @@ def dewiggler_stack(
                 continue
 
             logger.info(
-                "-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~"
+                40 * "-~"
             )
             logger.info(
-                f"  Current √𝜈 = {base_x2**0.5:.4f} > {try_different_slice_threshold:.4f}"
+                f"  Current √𝜈 = {base_x2**0.5:.4f} > "
+                f"{try_different_slice_threshold:.4f}"
             )
             logger.info(f"  Trying trace from slice {target_slice + 1}")
             logger.info(
-                "-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~"
+                40 * "-~"
             )
 
             model_trace = [
@@ -1293,7 +1320,10 @@ def dewiggler_stack(
                     frame_3d[1].data[:, target_index[0], target_index[1]],
                     frame_3d[3].data[:, target_index[0], target_index[1]],
                     plot=plot,
-                    plot_label=f'({target_index[0]},{target_index[1]}), r = {dist:.3f}", Slice {target_slice + 1}',
+                    plot_label=(
+                        f'({target_index[0]},{target_index[1]}), r = {dist:.3f}", '
+                        f'Slice {target_slice + 1}'
+                    ),
                     background_pf=pf_back,
                     min_fit_params=min_fit_params,
                     max_fit_params=max_fit_params,
@@ -1350,7 +1380,7 @@ def dewiggler_stack(
     xsols = d.load(open(xsol_fn, "rb"))
 
     for xindex, x in enumerate(xsols):
-    
+
         bad_fit = False
 
         retries = 0
@@ -1373,8 +1403,10 @@ def dewiggler_stack(
             # Compute the amplitudes of the fft modes.
 
             fft_freq = x[4]['freq']
-            p1_indices = (fft_freq[:] >= 1 - fft_order_width) & (fft_freq[:] <= 1 + fft_order_width)
-            # p32_indices = (fft_freq[:] >= 1.5 - fft_order_width) & (fft_freq[:] <= 1.5 + fft_order_width)
+            p1_indices = (
+                (fft_freq[:] >= 1 - fft_order_width) &
+                (fft_freq[:] <= 1 + fft_order_width)
+            )
 
             p1 = np.mean(np.abs(x[4]['residual_fft'][p1_indices]))
             pavg = np.mean(np.abs(x[4]['residual_fft']))
@@ -1383,20 +1415,25 @@ def dewiggler_stack(
             if p1 / pavg > power_ratio_threshold:
                 bad_fit = True
 
-            logger.info(f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = {fit_x2**0.5:.4f}."
-                        f"    and P(1) / P(3/2) = {p1 / pavg:.4f}.")
+            logger.info(
+                f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
+                f"{fit_x2**0.5:.4f}."
+                f"    and P(1) / P(3/2) = {p1 / pavg:.4f}."
+            )
 
             if mask_bad_fits & bad_fit:
                 logger.warning("Masking this pixel.")
-                
+
                 if retry_allowed:
-                    frame_3d[1].data[:, target_index[0], target_index[1]] = preferred_dewiggled_spectrum
+                    frame_3d[1].data[:, target_index[0], target_index[1]] = \
+                        preferred_dewiggled_spectrum
                     x = dewiggle_main_loop(xindex)
 
                 else:
-                    preferred_dewiggled_spectrum = np.ones_like(preferred_dewiggled_spectrum) * np.nan
+                    preferred_dewiggled_spectrum = (
+                        np.ones_like(preferred_dewiggled_spectrum) * np.nan
+                    )
 
-        
         frame_3d[1].data[
             :, target_index[0], target_index[1]
         ] = preferred_dewiggled_spectrum
