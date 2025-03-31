@@ -13,7 +13,10 @@ from .helpers import wigglebar
 logger = logging.getLogger(__name__)
 
 
-def identify_chip_gap(weight: np.typing.NDArray[np.float64]) -> tuple[int, int]:
+def identify_chip_gap(
+    weight: np.typing.NDArray[np.float64],
+    weight_based_masking_threshold: Optional[float] = 0.5,
+) -> tuple[int, int]:
     """
     Identify the longest contiguous gap of zero or NaN values in the weight array.
 
@@ -25,7 +28,13 @@ def identify_chip_gap(weight: np.typing.NDArray[np.float64]) -> tuple[int, int]:
     gaps = []
     in_gap = False
 
-    good_weight = ~(np.isnan(weight) | (weight == 0))
+    median_weight = np.nanmedian(weight)
+
+    good_weight = ~(
+        np.isnan(weight) |
+        (weight == 0) |
+        (weight < median_weight * weight_based_masking_threshold)
+    )
 
     current_gap = []
     for i, gw in enumerate(good_weight):
@@ -145,7 +154,12 @@ def load_frames(
     return fluxes, variances, dqs, weights, frames
 
 
-def determine_gap_edges(weights, base_fn="", recompute_gaps=False):
+def determine_gap_edges(
+    weights, 
+    base_fn="", 
+    recompute_gaps=False, 
+    weight_based_masking_threshold=0.5,
+):
 
     gap_edges = None
 
@@ -162,7 +176,10 @@ def determine_gap_edges(weights, base_fn="", recompute_gaps=False):
                 [
                     [
                         [
-                            identify_chip_gap(weights[i, :, j, k])
+                            identify_chip_gap(
+                                weights[i, :, j, k],
+                                weight_based_masking_threshold=weight_based_masking_threshold,
+                            )
                             for i in range(weights.shape[0])
                         ]
                         for j in range(weights.shape[2])
@@ -301,6 +318,7 @@ def frame_merge(
     gap_region=(1750, 2150),
     mask_file=None,
     target_detectors=["nrs1", "nrs2"],
+    weight_based_masking_threshold=0.5,
 ):
     if diagnostic_plot_filename == "":
         pdf = None
@@ -361,7 +379,10 @@ def frame_merge(
         # Now we'd like to find the pixels which bound the chip gap for each spaxel
         # of each frame.
         gap_edges = determine_gap_edges(
-            weights, base_fn=f"{out_fn[:-4]}", recompute_gaps=recompute_gaps
+            weights, 
+            base_fn=f"{out_fn[:-4]}", 
+            recompute_gaps=recompute_gaps,
+            weight_based_masking_threshold=weight_based_masking_threshold,
         )
 
         # Cast to float so that we can assign NaN
