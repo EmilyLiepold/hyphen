@@ -653,7 +653,7 @@ def parse_yaml_arguments_and_merge(getter):
 
     output_filename = getter("output_filename")
 
-    log_filename = output_filename.replace(".fits", ".log")
+    log_filename = output_filename.replace(".gz", "").replace(".fits", "") + ".log"
 
     logger = logging.getLogger()
 
