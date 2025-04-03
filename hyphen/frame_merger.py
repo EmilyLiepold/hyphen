@@ -169,7 +169,7 @@ def determine_gap_edges(
 
     try:
         logger.info("Trying to load gap array from cache")
-        gap_edges = np.load(f"{base_fn}gaps.npy").T
+        gap_edges = np.load(f"{base_fn}_gaps.npy").T
 
     except FileNotFoundError:
         recompute_gaps = True
@@ -191,7 +191,7 @@ def determine_gap_edges(
                     for k in range(weights.shape[3])
                 ]
             )
-            np.save(f"{base_fn}gaps.npy", gap_edges)
+            np.save(f"{base_fn}_gaps.npy", gap_edges)
             gap_edges = gap_edges.T
         except Exception as e:
             assert False, f"Error {e} in gap calculation"
