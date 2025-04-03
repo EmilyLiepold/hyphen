@@ -1020,6 +1020,7 @@ def dewiggler_stack(
     weight_based_masking_threshold: Optional[float | None] = 0.5,
     fft_order_width=0.1,
     power_ratio_threshold=3.0,
+    masked_regions: list = [],
 ) -> object:
     """
     :type slices_to_use: list
@@ -1249,7 +1250,19 @@ def dewiggler_stack(
 
         else:
             logger.debug("Weight-based masking is disabled.")
-            weight_based_mask = None
+            weight_based_mask = np.ones_like(axis_spectral)
+
+        explicit_mask = np.ones_like(axis_spectral)
+        if len(masked_regions) > 0:
+            logger.debug("Applying masked regions")
+            for m in masked_regions:
+                logger.info("Applying mask {m[0]}-{m[1]}")
+                explicit_mask[
+                    (axis_spectral >= m[0]) & (axis_spectral <= m[1])
+                ] = 0
+        
+        weight_based_mask = weight_based_mask * explicit_mask
+        weight_based_mask = weight_based_mask.astype(bool)
 
         # find world coordinates for the target pixel
         world_coords = frame_3d_wcs.pixel_to_world(
@@ -1542,6 +1555,7 @@ def parse_yaml_arguments_and_dewiggle(getter):
                 min_fit_params=getter("min_fit_params"),
                 max_fit_params=getter("max_fit_params"),
                 target_wiggle_pixels=getter("target_wiggly_pixels"),
+                masked_regions=getter("masked_regions"),
                 mask_bad_fits=bool(getter("mask_bad_fits")),
                 slices_to_use=getter("slices_to_use"),
                 reference_spectra_percentile_cut=getter(
@@ -1589,6 +1603,7 @@ default_options = {
         "gamma_order": 0,
         "order": 3,
     },
+    "masked_regions": [],
 }
 
 necessary_arguments = (
