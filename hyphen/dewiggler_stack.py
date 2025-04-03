@@ -1487,7 +1487,9 @@ def parse_yaml_arguments_and_dewiggle(getter):
         ""
     ], "No target frames specified and I don't yet know how to handle that..."
 
-    log_filename_prototype = output_filename_prototype.replace(".fits", ".log")
+    log_filename_prototype = (
+        output_filename_prototype.replace(".gz", "").replace(".fits", "") + ".log"
+    )
     plot_filename_prototype = getter("plot_filename_prototype")
 
     for target_frame in target_frames:
