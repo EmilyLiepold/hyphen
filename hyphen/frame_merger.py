@@ -106,10 +106,12 @@ def load_frames(
 
     try:
         logger.info("Trying to load arrays from cached arrays")
-        fluxes = np.load(f"{base_fn}fluxes.npy")
-        variances = np.load(f"{base_fn}variances.npy")
-        dqs = np.load(f"{base_fn}dqs.npy")
-        weights = np.load(f"{base_fn}weights.npy")
+        arrs = np.load(f"{base_fn}_cached.npz")
+        fluxes = arrs["fluxes"]
+        variances = arrs["variances"]
+        dqs = arrs["dqs"]
+        weights = arrs["weights"]
+        del arrs
 
     except FileNotFoundError:
         logger.warning("Unable to load arrays from cache. Loading from disk instead")
@@ -144,10 +146,12 @@ def load_frames(
             dqs = np.nanmin(dqs, axis=1)
 
             logger.info("   Caching arrays to disk")
-            np.save(f"{base_fn}fluxes.npy", fluxes)
-            np.save(f"{base_fn}variances.npy", variances)
-            np.save(f"{base_fn}dqs.npy", dqs)
-            np.save(f"{base_fn}weights.npy", weights)
+            np.savez_compressed(f"{base_fn}_cached.npz",
+                                fluxes=fluxes,
+                                variances=variances,
+                                dqs=dqs,
+                                weights=weights)
+
         except (FileNotFoundError, IOError) as e:
             raise RuntimeError(f"Error {e} in file loading")
 
@@ -332,9 +336,11 @@ def frame_merge(
     # We want to follow the same protocol as the
     # jwst.cube_build.ifu_cube.find_spaxel_flux() function.
 
+    base_fn = outfn.replace('.gz','').replace('.fits','')
+
     fluxes, variances, dqs, weights, frames = load_frames(
         fnss,
-        base_fn=f"{out_fn[:-4]}",
+        base_fn=base_fn,
         weights_fns=weights_fns,
         load_frames_from_disk=load_frames_from_disk,
     )
@@ -380,7 +386,7 @@ def frame_merge(
         # of each frame.
         gap_edges = determine_gap_edges(
             weights, 
-            base_fn=f"{out_fn[:-4]}", 
+            base_fn=base_fn, 
             recompute_gaps=recompute_gaps,
             weight_based_masking_threshold=weight_based_masking_threshold,
         )
