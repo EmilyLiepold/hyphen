@@ -379,15 +379,7 @@ def build_wiggly_model(
     bounds.append([0.99, 1.01])
     initial_guess.append(1.0)
 
-    # a_1
-    bounds.append([-1.0, 1.0])
-    initial_guess.append(0.0)
-
-    # b_1
-    bounds.append([-1.0, 1.0])
-    initial_guess.append(0.0)
-
-    for j in range(order - 1):
+    for j in range(order):
         # a_j
         bounds.append([-1.0, 1.0])
         initial_guess.append(0.0)
