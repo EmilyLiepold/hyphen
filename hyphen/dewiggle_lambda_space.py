@@ -701,8 +701,10 @@ def dewiggle_lambda_space(
                         improving = True
                         break
 
-                except Exception:
+                except Exception as e:
+
                     logger.info("      !!! Fit Failed !!!")
+                    logger.info(f"       exception {e}")
 
     ps_continuum = envelope(x_vals, *xsol[0 : fit_params["alpha_order"] + 1])
 
