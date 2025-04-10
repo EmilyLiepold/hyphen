@@ -1415,24 +1415,28 @@ def dewiggler_stack(
 
             # Compute the amplitudes of the fft modes.
 
-            fft_freq = x[4]['freq']
-            p1_indices = (
-                (fft_freq[:] >= 1 - fft_order_width) &
-                (fft_freq[:] <= 1 + fft_order_width)
-            )
+            # First, make sure that 'freq' is in the dictionary:
+            if 'freq' in x[4].keys():
+                fft_freq = x[4]['freq']
+                p1_indices = (
+                    (fft_freq[:] >= 1 - fft_order_width) &
+                    (fft_freq[:] <= 1 + fft_order_width)
+                )
 
-            p1 = np.mean(np.abs(x[4]['residual_fft'][p1_indices]))
-            pavg = np.mean(np.abs(x[4]['residual_fft']))
-            logger.info('')
+                p1 = np.mean(np.abs(x[4]['residual_fft'][p1_indices]))
+                pavg = np.mean(np.abs(x[4]['residual_fft']))
+                logger.info('')
 
-            if p1 / pavg > power_ratio_threshold:
+                if p1 / pavg > power_ratio_threshold:
+                    bad_fit = True
+
+                logger.info(
+                    f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
+                    f"{fit_x2**0.5:.4f}."
+                    f"    and P(1) / P(3/2) = {p1 / pavg:.4f}."
+                )
+            else:
                 bad_fit = True
-
-            logger.info(
-                f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
-                f"{fit_x2**0.5:.4f}."
-                f"    and P(1) / P(3/2) = {p1 / pavg:.4f}."
-            )
 
             if mask_bad_fits & bad_fit:
                 logger.warning("Masking this pixel.")
