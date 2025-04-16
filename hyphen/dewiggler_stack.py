@@ -1442,9 +1442,17 @@ def dewiggler_stack(
                 logger.warning("Masking this pixel.")
 
                 if retry_allowed:
-                    frame_3d[1].data[:, target_index[0], target_index[1]] = \
-                        preferred_dewiggled_spectrum
-                    x = dewiggle_main_loop(xindex)
+                    try:
+                        frame_3d[1].data[:, target_index[0], target_index[1]] = \
+                            preferred_dewiggled_spectrum
+                        x = dewiggle_main_loop(xindex)
+                    except Exception as e:
+                        logger.warning(
+                            f"Error in dewiggle_main_loop: {e}"
+                        )
+                        preferred_dewiggled_spectrum = (
+                            np.ones_like(preferred_dewiggled_spectrum) * np.nan
+                        )
 
                 else:
                     preferred_dewiggled_spectrum = (
