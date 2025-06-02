@@ -16,6 +16,7 @@ dependencies = [
     "jwst", 
     "joblib", 
     "dill",
+    "tqdm",
 ]
 authors = [
     {name = "Emily Liepold", email = "emilyliepold@berkeley.edu"}
