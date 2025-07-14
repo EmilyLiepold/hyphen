@@ -21,9 +21,12 @@ def validate_yaml_arguments(yaml_files, necessary_arguments=()):
 
 def yaml_layerer(yaml_files):
 
-    def generic_get(arg, default=None):
+    def generic_get(arg, default=None, override=()):
         out = default
         for yaml_file in yaml_files:
+            out = yaml_file.get(arg, out)
+
+        for yaml_file in override:
             out = yaml_file.get(arg, out)
 
         return out

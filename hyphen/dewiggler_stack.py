@@ -15,11 +15,16 @@ from jwst.assign_wcs import nrs_ifu_wcs
 from joblib import delayed
 import dill as d
 from typing import Callable, Optional
+from functools import partial
 
 from .tracer_helpers import find_bars, infer_fractional_position
 from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
 from .yaml_helpers import ingest_yaml
 from .helpers import ProgressParallel
+from .single_dewiggle_step import (single_dewiggle_default_options,
+                                   single_dewiggle_necessary_arguments)
+from .batch_dewiggle_step import (batch_dewiggle_default_options,
+                                  batch_dewiggle_necessary_arguments)
 
 logger = logging.getLogger(__name__)
 
@@ -1260,7 +1265,7 @@ def dewiggler_stack(
                 explicit_mask[
                     (axis_spectral >= m[0]) & (axis_spectral <= m[1])
                 ] = 0
-        
+
         weight_based_mask = weight_based_mask * explicit_mask
         weight_based_mask = weight_based_mask.astype(bool)
 
@@ -1581,64 +1586,81 @@ def parse_yaml_arguments_and_dewiggle(getter):
     return 0
 
 
-default_options = {
-    "input_2d_filename_prototype": None,
-    "input_3d_filename_prototype": None,
-    "output_filename_prototype": None,
-    "target_detectors": ["nrs1", "nrs2"],
-    "target_frames": [""],
-    "plot_filename_prototype": False,
-    "central_pixel": [-1, -1],
-    "dewiggling_radius": 0.5,
-    "central_reference_spectrum_radius": 0.2,
-    "smooth_model_poly_order": 5,
-    "diagnostic_fraction": 1,
-    "background_reference_spectrum_radii": [1.0, 1.5],
-    "fractional_residual_threshold": 0.05,
-    "fit_param_fractional_residual_improvement_threshold": 0.0001,
-    "n_jobs": 1,
-    "perform_dewiggling": True,
-    "target_radec": (0.0, 0.0),
-    "use_cached_wcs": True,
-    "target_wiggly_pixels": [],
-    "mask_bad_fits": True,
-    "slices_to_use": [0, -1, 1],
-    "reference_spectra_percentile_cut": 1,
-    "try_different_slice_threshold": 0.025,
-    "min_fit_params": {
-        "alpha_order": 0,
-        "beta_order": 1,
-        "gamma_order": 0,
-        "order": 3,
-    },
-    "max_fit_params": {
-        "alpha_order": 0,
-        "beta_order": 1,
-        "gamma_order": 0,
-        "order": 3,
-    },
-    "masked_regions": [],
-}
+def parse_yaml_arguments_and_batch_dewiggle(getter):
 
-necessary_arguments = (
-    "label",
-    "input_2d_filename_prototype",
-    "input_3d_filename_prototype",
-    "output_filename_prototype",
-    "target_frames",
-)
+    # This function should loop through the list contained in 'central_pixel' and for
+    # each element build a modified getter plugging in appropriate modifications to
+    # the output filenames and central pixel and pass that getter to the single dewiggle
+    # parser.
 
-step = {
+    # This function should transparently pass most all arguments from getter along to
+    # the various single-dewiggle passes.
+    # The exceptions are
+    # 1. central_pixel must be provided here and must be a list of 2-tuples
+    # 2. input_3d_filename_prototype will be modified to chain the output of one
+    #    step to the next
+    # 3. output_filename_prototype will be modified similar to inptu_3d_filename
+    # 4. plot_filename_prototype similar.
+
+    input_3d_prototype = getter("input_3d_filename_prototype")
+
+    central_pixels = getter("central_pixel")
+
+    output_filename_prototypes = [
+        getter("output_filename_prototype").replace('PIXEL', f'{c[0]}_{c[1]}')
+        for c in central_pixels
+    ]
+    plot_filename_prototype = getter("plot_filename_prototype")
+
+    if plot_filename_prototype:
+        plot_filename_prototypes = [
+            plot_filename_prototype.replace("PIXEL", f"{c[0]}_{c[1]}")
+            for c in central_pixels
+        ]
+    else:
+        plot_filename_prototypes = [False for c in central_pixels]
+
+    input_3d_prototypes = (
+        [getter("input_3d_filename_prototype")] + output_filename_prototypes[:-1]
+    )
+
+    for (input_3d_prototype, output_filename_prototype,
+            plot_filename_prototype, central_pixel) in zip(
+            input_3d_prototypes, output_filename_prototypes, plot_filename_prototypes,
+            central_pixels):
+
+        override = {
+            'input_3d_filename_prototype': input_3d_prototype,
+            'output_filename_prototype': output_filename_prototype,
+            'plot_filename_prototype': plot_filename_prototype,
+            'central_pixel': central_pixel,
+        }
+
+        partial_getter = partial(getter, override=[override])
+
+        parse_yaml_arguments_and_dewiggle(partial_getter)
+
+    return 0
+
+
+single_dewiggle_step = {
     "target_step_type": "dewiggle",
     "target_function": parse_yaml_arguments_and_dewiggle,
-    "default_options": default_options,
-    "necessary_arguments": necessary_arguments,
+    "default_options": single_dewiggle_default_options,
+    "necessary_arguments": single_dewiggle_necessary_arguments,
+}
+
+batch_dewiggle_step = {
+    "target_step_type": "batch_dewiggle",
+    "target_function": parse_yaml_arguments_and_batch_dewiggle,
+    "default_options": batch_dewiggle_default_options,
+    "necessary_arguments": batch_dewiggle_necessary_arguments,
 }
 
 
 def dewiggler_wrapper(yaml_file):
 
-    ingest_yaml(yaml_file, [step])
+    ingest_yaml(yaml_file, [single_dewiggle_step, batch_dewiggle_step])
 
     return
 
