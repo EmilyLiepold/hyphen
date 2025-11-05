@@ -8,9 +8,10 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.spatial import ConvexHull
 from astropy.wcs import WCS
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord, SpectralCoord
 from astropy import units as u
 from stdatamodels.jwst.datamodels import ImageModel
+from stdatamodels.jwst.datamodels import MultiSlitModel
 from jwst.assign_wcs import nrs_ifu_wcs
 from joblib import delayed
 import dill as d
@@ -20,11 +21,16 @@ from functools import partial
 from .tracer_helpers import find_bars, infer_fractional_position
 from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
 from .yaml_helpers import ingest_yaml
-from .helpers import ProgressParallel
-from .single_dewiggle_step import (single_dewiggle_default_options,
-                                   single_dewiggle_necessary_arguments)
-from .batch_dewiggle_step import (batch_dewiggle_default_options,
-                                  batch_dewiggle_necessary_arguments)
+from .helpers import ProgressParallel, get_ybounds
+from .single_dewiggle_ifu_step import (single_dewiggle_ifu_default_options,
+                                       single_dewiggle_ifu_necessary_arguments)
+from .batch_dewiggle_ifu_step import (batch_dewiggle_ifu_default_options,
+                                      batch_dewiggle_ifu_necessary_arguments)
+from .single_dewiggle_msa_step import (single_dewiggle_msa_default_options,
+                                       single_dewiggle_msa_necessary_arguments)
+from .batch_dewiggle_msa_step import (batch_dewiggle_msa_default_options,
+                                      batch_dewiggle_msa_necessary_arguments)
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +60,7 @@ def load_frames(fn_2d: str, fn_3d: str) -> tuple[HDUList, HDUList, str, str]:
     return frame_2d, frame_3d, fn_2d_shortname, fn_3d_shortname
 
 
-def get_wcs(
+def get_wcs_ifu(
     fn_2d: str, frame_3d: HDUList, use_cached_wcs: bool = True
 ) -> tuple[list[WCS], WCS]:
     """
@@ -100,6 +106,41 @@ def get_wcs(
     return frame_2d_wcs, frame_3d_wcs
 
 
+def get_wcs_msa(
+    fn_2d: str, fn_3d: str
+) -> tuple[
+    list[WCS],
+    list[WCS],
+    MultiSlitModel,
+    MultiSlitModel,
+]:
+    """
+    Get the wcs for the 2D and 3D frames
+
+    :param fn_2d: This is the filename for the 2D detector-frame fits file
+    :param frame_3d: This is the fits object for the 3D detector-frame fits file.
+    :param use_cached_wcs: If True, we'll try to use a cached WCS file. If False, we'll
+        compute the WCS from scratch. If there's an issue with loading the cached WCS,
+        we'll compute the WCS from scratch.
+    :return: A tuple containing a list of the WCS for each slit in the 2D frame and
+        the WCS for each slit in the for the 3D frame
+    """
+
+    logger.info("Computing WCS for the slices in the 2D frame")
+
+    frame_2d_model = MultiSlitModel(fn_2d)
+    n_slits = len(frame_2d_model.slits)
+    frame_2d_wcs = [frame_2d_model.slits[i].meta.wcs for i in range(n_slits)]
+
+    logger.info("Computing WCS for the 3D frame")
+
+    frame_3d_model = MultiSlitModel(fn_3d)
+    n_slits = len(frame_3d_model.slits)
+    frame_3d_wcs = [frame_3d_model.slits[i].meta.wcs for i in range(n_slits)]
+
+    return frame_2d_wcs, frame_3d_wcs, frame_2d_model, frame_3d_model
+
+
 def determine_detector_name(frame_2d: HDUList) -> str:
     """
     Determine the detector from the 2D frame
@@ -114,7 +155,7 @@ def determine_detector_name(frame_2d: HDUList) -> str:
 
 
 def get_trace_model(
-    detector_wcs: WCS, ra: float, dec: float
+    detector_wcs: WCS, ra: float, dec: float, mapped_wcs_coord: str = 'detector',
 ) -> tuple[
     Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]],
     Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]
@@ -131,7 +172,7 @@ def get_trace_model(
     def generic_trace(
         x: np.typing.NDArray[np.float64]
     ) -> np.typing.NDArray[np.float64]:
-        return np.atleast_2d(detector_wcs.transform("world", "detector", ra, dec, x))
+        return np.atleast_2d(detector_wcs.get_transform("world", mapped_wcs_coord)(ra, dec, x))
 
     def trace_x(x: np.typing.NDArray[np.float64]) -> np.typing.NDArray[np.float64]:
         return generic_trace(x)[1, :]
@@ -142,7 +183,7 @@ def get_trace_model(
     return trace_x, trace_y
 
 
-def get_principal_axes(
+def get_principal_axes_ifu(
     frame_3d: HDUList
     ) -> tuple[
         np.typing.NDArray[np.float64],
@@ -182,8 +223,51 @@ def get_principal_axes(
 
     return axis_pixel, axis_slice, axis_spectral
 
+def get_principal_axes_msa(
+    frame_3d: HDUList,
+    frame_3d_wcs: list[WCS],
+    slitlet: int,
+    ) -> tuple[
+        np.typing.NDArray[np.float64],
+        np.typing.NDArray[np.float64],
+        np.typing.NDArray[np.float64],
+        ]:
+    """
+    Get the principal axes of the 3D frame
+    :rtype: tuple[np.ndarray, np.ndarray, np.ndarray]
+    :param frame_3d: This is the fits object for the 3D detector-frame exposure
+    :return: A tuple containing three numpy arrays:
+        - axis_pixel: The pixel axis values.
+        - axis_slice: The slice axis values.
+        - axis_spectral: The spectral axis values.
+    """
 
-def determine_target_pixel(
+    # Define the axes of the 3D frame
+    # Note that the ordering of the axes is opposite of the fits datacube.
+    # e.g., frame_3d[1].data.shape = (NAXIS3, NAXIS2, NAXIS1)
+    # axis_pixel runs along the pixel axis (e.g., each index here corresponds to a
+    # different pixel)
+    # axis_slice runs along the slice axis (e.g., each index here corresponds to a
+    # different slice)
+    # axis_spectral runs along the spectral axis
+
+    # Note that the sign of displacements along the slice axis are reversed here for
+    # convenience while plotting.
+    # hdr = frame_3d[8 * slitlet + 1].header
+    slitlet_frame = frame_3d[8 * slitlet + 1]
+    slitlet_3d_wcs = frame_3d_wcs[slitlet]
+
+    axis_pixel = np.arange(slitlet_frame.data.shape[0])
+    axis_slice = np.zeros(1)
+    axis_spectral = np.asarray(slitlet_3d_wcs.pixel_to_world_values(np.arange(slitlet_frame.data.shape[1]), np.ones_like(np.arange(slitlet_frame.data.shape[1])) * slitlet_frame.data.shape[0]//2))[2,:]
+
+    logger.debug(f"Found {len(axis_pixel)} spaxels along the pixel axis")
+    logger.debug(f"Found {len(axis_spectral)} pixels along the spectral axis")
+
+    return axis_pixel, axis_slice, axis_spectral
+
+
+def determine_target_pixel_ifu(
     target_pixel: (tuple[int, int] | list[int] | np.typing.NDArray[np.int_]) = (-1, -1),
     target_radec: (tuple[float, float] | list[float] | np.typing.NDArray[np.float64]) =
                   (0.0, 0.0),
@@ -246,23 +330,113 @@ def determine_target_pixel(
     return target_pixel
 
 
+def determine_target_pixel_msa(
+    target_pixel: int = -1,
+    target_radec: (tuple[float, float] | list[float] | np.typing.NDArray[np.float64]) =
+                  (0.0, 0.0),
+    frame_3d_wcs: WCS = None,
+    image: (np.typing.NDArray[np.float64] | None) = None,
+            ) -> np.typing.NDArray[np.int_]:
+
+    """
+    Determine the target pixel coordinates.
+
+    :param target_pixel: The target pixel coordinates. Default is (-1, -1).
+                         this is assumed to be 1-indexed; similar to what we'd see in
+                         qfitsview or similar. TODO!
+    :param target_radec: The target Right Ascension (RA) and Declination (Dec)
+                         coordinates. Default is (0.0, 0.0).
+    :param frame_3d_wcs: The World Coordinate System (WCS) object for the 3D frame.
+                         Default is None.
+    :param image: The image array from which to determine the target pixel if neither
+                  target_pixel nor target_radec is provided. Default is None.
+    :return:  The determined target pixel coordinates as an array of integers.
+
+    """
+
+    if target_pixel != -1:
+        logger.info("Using provided target pixel.")
+        target_pixel = np.asarray([target_pixel, 1])
+    # elif target_radec != (0.0, 0.0):
+    #     logger.info(
+    #         "Target Ra and Dec provided. Finding the target pixel from the WCS..."
+    #     )
+    #     target_pixel_3d = frame_3d_wcs.world_to_pixel(
+    #         SkyCoord(
+    #             ra=target_radec[0] * u.deg,
+    #             dec=target_radec[1] * u.deg,
+    #             frame="icrs",
+    #         ),
+    #         2 * u.micron,
+    #     )
+    #     target_pixel = np.asarray(
+    #         [
+    #             (np.round(target_pixel_3d[0]) + 1).astype(int),
+    #             (np.round(target_pixel_3d[1]) + 1).astype(int),
+    #         ]
+    #     )
+
+    elif image is not None:
+        logger.warning(
+            "Neither target pixel nor target RA and Dec not provided. Finding the"
+            "target pixel from the peak of the median image..."
+        )
+        target_pixel = (
+            np.asarray(np.where(image[:, :] == np.nanmax(image[:, :])))[:, 0][::-1] + 1
+        ).astype(int)
+
+    else:
+        raise ValueError(
+            "No target pixel, target RA and Dec, or image provided. Cannot determine"
+            "the target pixel."
+        )
+    target_pixel = np.asarray(target_pixel).astype(int)
+    logger.info(f"Using the target pixel {target_pixel} (slice, pixel)")
+
+    return target_pixel
+
+
 def determine_reference_spectrum(
-    frame_3d_shortname,
-    axis_spectral,
-    frame_3d,
-    spaxel_distance,
-    inner_radius,
-    outer_radius,
-    smooth_model_poly_order,
-    reference_spectra_percentile_cut=1,
-    sigma_clipping_iterations=3,
-    sigma_clipping_threshold=5,
-):
+    frame_3d_shortname: str,
+    axis_spectral: np.typing.NDArray[np.float64],
+    frame_3d: HDUList,
+    spaxel_distance: np.typing.NDArray[np.float64],
+    inner_radius: float,
+    outer_radius: float,
+    smooth_model_poly_order: int,
+    reference_spectra_percentile_cut: float = 1.0,
+    sigma_clipping_iterations: int = 3,
+    sigma_clipping_threshold: float = 5,
+    data_frame_index: int = 1,
+    data_quality_frame_index: Optional[int] = 3,
+) -> tuple[np.typing.NDArray[np.float64],
+           np.typing.NDArray[np.float64],
+           np.typing.NDArray[np.float64]]:
 
     logger.debug(f"Finding reference spectra from {frame_3d_shortname}")
 
-    cube_for_computing_reference_spectrum = frame_3d[1].data[...]
-    cube_for_computing_reference_spectrum[(frame_3d[3].data[...] != 0)] = np.nan
+    cube_for_computing_reference_spectrum = frame_3d[data_frame_index].data[...]
+
+    if data_quality_frame_index is not None:
+        invalid_mask = frame_3d[data_quality_frame_index].data[...] != 0
+        cube_for_computing_reference_spectrum[invalid_mask] = np.nan
+
+    if cube_for_computing_reference_spectrum.ndim == 2:
+        cube_for_computing_reference_spectrum = cube_for_computing_reference_spectrum.T
+        cube_for_computing_reference_spectrum = cube_for_computing_reference_spectrum.reshape(
+            (
+                cube_for_computing_reference_spectrum.shape[0],
+                1,
+                cube_for_computing_reference_spectrum.shape[1],
+            )
+        )
+    
+    if inner_radius < 0 or outer_radius < 0:
+        # If either radius is negative, exclude this reference spectrum
+        return (np.zeros(cube_for_computing_reference_spectrum.shape[0]),
+                np.asarray([0.0]),
+                np.zeros(cube_for_computing_reference_spectrum.shape[0]))
+
 
     # Find the reference spectrum by summing over the central region
     reference_spectrum_indices = np.where(
@@ -275,6 +449,8 @@ def determine_reference_spectrum(
         ],
         axis=-1,
     )
+
+    # print(f'{reference_spectrum.shape=}')
 
     logger.info(
         f'Using {len(reference_spectrum_indices[0])} '
@@ -303,7 +479,13 @@ def determine_reference_spectrum(
         )
     )
 
+    if sum(good_pixels) == 0:
+        pf = [np.nan]
+        smoothed_reference_spectrum = np.full_like(reference_spectrum, np.nan)
+        return reference_spectrum, pf, smoothed_reference_spectrum
+
     for j in range(sigma_clipping_iterations + 1):
+        # print(good_pixels)
         pf = np.polyfit(
             axis_spectral[good_pixels],
             reference_spectrum[good_pixels],
@@ -351,18 +533,22 @@ def determine_spatial_arr(axis_pixel, axis_slice):
     return spatial_arr
 
 
-def determine_image(frame_3d):
+def determine_image(frame_3d, frame_index = 1, collapse_axis=0):
 
     # We want to plot quick diagnostics of the spectrally collapsed image
     # We'll make a median image
-    median_image = np.nanmedian(frame_3d[1].data, axis=0)
+
+    median_image = np.nanmedian(frame_3d[frame_index].data, axis=collapse_axis)
+    median_image = np.nanmedian(frame_3d[frame_index].data, axis=collapse_axis)
+    if median_image.ndim == 1:
+        median_image = np.atleast_2d(median_image)
 
     return median_image
 
 
-def determine_spaxel_distances(spatial_arr, target_pixel):
+def determine_spaxel_distances(spatial_arr, target_pixel, conversion_factor = 3600):
 
-    spaxel_distance = 3600 * np.sqrt(
+    spaxel_distance = conversion_factor * np.sqrt(
         (spatial_arr[0, :, :] - spatial_arr[0, target_pixel[1], target_pixel[0]]) ** 2
         + (spatial_arr[1, :, :] - spatial_arr[1, target_pixel[1], target_pixel[0]]) ** 2
     )
@@ -412,7 +598,7 @@ def close_plot(plot: PdfPages | bool | None) -> None:
         plot.close()
 
 
-def _build_image_map(
+def _build_image_map_ifu(
     fig,
     axes,
     axis_pixel: np.ndarray,
@@ -465,7 +651,63 @@ def _build_image_map(
     return (fig, axes)
 
 
-def build_image_map(
+def _build_image_map_msa(
+    fig,
+    axes,
+    axis_pixel: np.ndarray,
+    axis_slice: np.ndarray,
+    image: np.ndarray,
+    spaxel_distance: np.ndarray,
+    target_pixel: tuple[int, int],
+    frame_3d_shortname: str,
+    dewiggling_radius: float,
+    central_reference_spectrum_radius: float,
+    background_reference_spectrum_radius: tuple[float, float],
+):
+
+    vertical_axis = (axis_pixel - axis_pixel[target_pixel[1]])
+
+    axes.scatter(vertical_axis, (image)[0, :], c='k')
+    
+    axes.axvspan(
+                -dewiggling_radius,
+                dewiggling_radius,
+                color='b',
+                alpha=0.3, label='Dewiggling Region',
+                edgecolor=None)
+
+    axes.axvspan(
+                -central_reference_spectrum_radius,
+                central_reference_spectrum_radius,
+                color='r',
+                alpha=0.3, label='Central Spectrum region',
+                edgecolor=None)
+    axes.axvspan(np.nan, np.nan, color='g',
+                 alpha=0.3, label='Background Reference Spectrum Region',
+                 edgecolor=None)
+        
+    if -1 not in background_reference_spectrum_radius:
+        for g in [-1,1]:
+            axes.axvspan(
+                g*background_reference_spectrum_radius[0],
+                g*background_reference_spectrum_radius[1],
+                color='g',
+                alpha=0.3,
+                edgecolor=None)
+
+    axes.legend(fontsize=6)
+    axes.set_ylabel("Flux\n(arbitrary)")
+    axes.set_xlabel("Pixel Axis\n(px; index 1; relative to central pixel)")
+
+    axes.set_title(
+        f"Median image of\n{frame_3d_shortname}"
+    )
+
+    return (fig, axes)
+
+
+
+def build_image_map_ifu(
     plot: PdfPages | bool | None,
     axis_pixel: np.ndarray,
     axis_slice: np.ndarray,
@@ -481,7 +723,7 @@ def build_image_map(
         return None
 
     fig, axes = plt.subplots(1, 1, figsize=(6, 6))
-    _build_image_map(
+    _build_image_map_ifu(
         fig,
         axes,
         axis_pixel,
@@ -502,6 +744,45 @@ def build_image_map(
     return None
 
 
+def build_image_map_msa(
+    plot: PdfPages | bool | None,
+    axis_pixel: np.ndarray,
+    axis_slice: np.ndarray,
+    image: np.ndarray,
+    spaxel_distance: np.ndarray,
+    target_pixel: tuple[int, int],
+    frame_3d_shortname: str,
+    dewiggling_radius: float,
+    central_reference_spectrum_radius: float,
+    background_reference_spectrum_radius: tuple[float, float],
+) -> object:
+    if not plot:
+        return None
+
+    fig, axes = plt.subplots(1, 1, figsize=(6, 3.75))
+    fig.subplots_adjust(left=0.12, right=0.98, top=0.85, bottom=0.18)
+    
+    _build_image_map_msa(
+        fig,
+        axes,
+        axis_pixel,
+        axis_slice,
+        image,
+        spaxel_distance,
+        target_pixel,
+        frame_3d_shortname,
+        dewiggling_radius,
+        central_reference_spectrum_radius,
+        background_reference_spectrum_radius,
+    )
+    
+    if isinstance(plot, PdfPages):
+        plot.savefig()
+    plt.close()
+
+    return None
+
+
 def build_reference_spectra_plot(
     plot: PdfPages | bool | None,
     axis_spectral: np.ndarray,
@@ -513,51 +794,85 @@ def build_reference_spectra_plot(
     central_reference_spectrum_radius: float,
     background_reference_spectrum_radius: tuple[float, float],
     smooth_model_poly_order: int,
+    unit: str = 'arcsec',
+    wave_unit: str = 'micron',
+    linewidth: float = 0.5,
 ) -> None:
     if not plot:
         return
 
     logger.info("Plotting the reference spectra")
 
-    fig, axes = plt.subplots(3, 1, figsize=(6, 6))
-    fig.suptitle(f"Reference Spectra from {frame_3d_shortname}")
+    fig, axes = plt.subplots(3, 1, figsize=(6, 9.7))
+    fig.suptitle(f"Reference Spectra from \n{frame_3d_shortname}")
+    
     axes[0].plot(
         axis_spectral[np.isfinite(central_reference_spectrum)],
         central_reference_spectrum[np.isfinite(central_reference_spectrum)],
         c="k",
-        label=f'Central Reference Spectrum, mean of central '
-              f'{central_reference_spectrum_radius:.2f}"',
+        label=f'Central Spectrum\nMean of central '
+              f'{central_reference_spectrum_radius:.2f} {unit}',
+        linewidth=linewidth,
     )
+
+    yrange = get_ybounds([1e50, 1e-50],
+                         central_reference_spectrum[
+                            np.isfinite(central_reference_spectrum)
+                         ])
+
     axes[0].plot(
         axis_spectral[np.isfinite(central_reference_spectrum)],
         smoothed_reference_spectrum[np.isfinite(central_reference_spectrum)],
         c="r",
-        label=f"Smoothed with order {smooth_model_poly_order} polynomial",
+        label=f"Order {smooth_model_poly_order} polynomial",
+        linewidth=2*linewidth,
     )
+
+    yrange = get_ybounds(yrange,
+                         smoothed_reference_spectrum[
+                            np.isfinite(central_reference_spectrum)
+                         ])
+
     axes[0].legend(fontsize=6)
-    axes[0].set_xlabel("Wavelength, microns")
+    axes[0].set_xlabel(f"Wavelength ({wave_unit})")
     axes[0].set_ylabel("Central\n(Flux, arbitrary)")
 
+    axes[0].set_ylim(yrange[0] * 0.9, yrange[1] * 1.1)
+    
     axes[1].plot(
         axis_spectral[np.isfinite(background_reference_spectrum)],
         background_reference_spectrum[np.isfinite(background_reference_spectrum)],
         c="k",
         label=(
-            f'Background Reference Spectrum, mean between '
+            f'Background Spectrum\nMean between '
             f'({background_reference_spectrum_radius[0]:.2f}'
-            f'-{background_reference_spectrum_radius[1]:.2f})"'
+            f'-{background_reference_spectrum_radius[1]:.2f}) {unit}'
         ),
+        linewidth=linewidth,
     )
+
+    yrange = get_ybounds([1e50, 1e-50],
+                         background_reference_spectrum[
+                            np.isfinite(background_reference_spectrum)
+                        ])
+
     axes[1].plot(
         axis_spectral[np.isfinite(background_reference_spectrum)],
         smoothed_background_reference_spectrum[
             np.isfinite(background_reference_spectrum)
         ],
         c="r",
-        label=f"Smoothed with order {smooth_model_poly_order} polynomial",
+        label=f"Order {smooth_model_poly_order} polynomial",
+        linewidth=2*linewidth,
     )
+    yrange = get_ybounds(yrange,
+                         smoothed_background_reference_spectrum[
+                             np.isfinite(background_reference_spectrum)
+                         ])
+
+    axes[1].set_ylim(yrange[0] * 0.9, yrange[1] * 1.1)
     axes[1].legend(fontsize=6)
-    axes[1].set_xlabel("Wavelength, microns")
+    axes[1].set_xlabel(f"Wavelength ({wave_unit})")
     axes[1].set_ylabel("Background\n(Flux, arbitrary)")
 
     axes[2].plot(
@@ -570,25 +885,46 @@ def build_reference_spectra_plot(
             * np.isfinite(central_reference_spectrum)
         ],
         c="k",
-        label="Ratio of background and reference spectra",
+        label="Ratio of Background and Central spectra",
+        linewidth=linewidth,
     )
+    yrange = get_ybounds([1e50, 1e-50],
+                         (background_reference_spectrum / central_reference_spectrum)[
+                            np.isfinite(background_reference_spectrum)
+                            * np.isfinite(central_reference_spectrum)
+                        ])
+
     axes[2].plot(
         axis_spectral[
             np.isfinite(background_reference_spectrum)
             * np.isfinite(central_reference_spectrum)
         ],
-        (smoothed_background_reference_spectrum / smoothed_reference_spectrum)[
+        (
+            smoothed_background_reference_spectrum
+            / smoothed_reference_spectrum
+        )[
             np.isfinite(background_reference_spectrum)
             * np.isfinite(central_reference_spectrum)
         ],
         c="r",
-        label=f"Smoothed with order {smooth_model_poly_order} polynomial",
+        label=f"Order {smooth_model_poly_order} polynomial",
+        linewidth=2*linewidth,
     )
+
+    ratio = (
+        smoothed_background_reference_spectrum / smoothed_reference_spectrum
+    )[
+        np.isfinite(background_reference_spectrum)
+        * np.isfinite(central_reference_spectrum)
+    ]
+    yrange = get_ybounds(yrange, ratio)
+
+    axes[2].set_ylim(yrange[0] * 0.9, yrange[1] * 1.1)
     axes[2].legend(fontsize=6)
-    axes[2].set_xlabel("Wavelength, microns")
+    axes[2].set_xlabel(f"Wavelength ({wave_unit})")
     axes[2].set_ylabel("Background / Central\n(Flux, arbitrary)")
 
-    fig.subplots_adjust(left=0.15)
+    fig.subplots_adjust(left=0.15, right=0.98, top=0.92, bottom=0.07, hspace=0.20)
     if isinstance(plot, PdfPages):
         plot.savefig()
     plt.close()
@@ -658,7 +994,7 @@ def build_bar_map_plot(
     return None
 
 
-def build_spaxel_map_plot(
+def build_spaxel_map_plot_ifu(
     plot: PdfPages | bool | None,
     axis_pixel: np.ndarray,
     axis_slice: np.ndarray,
@@ -776,6 +1112,119 @@ def build_spaxel_map_plot(
         axes[tindex + 1].set_ylim(np.min(bars[ts][:, 0]), np.max(bars[ts][:, 0]))
         axes[tindex + 1].set_aspect("auto")
         axes[tindex + 1].set_title(f"Slice {ts + 1}")
+
+    if isinstance(plot, PdfPages):
+        plot.savefig()
+    plt.close()
+
+    return None
+
+
+def build_spaxel_map_plot_msa(
+    plot: PdfPages | bool | None,
+    axis_pixel: np.ndarray,
+    axis_slice: np.ndarray,
+    axis_spectral: np.ndarray,
+    image: np.ndarray,
+    spaxel_distance: np.ndarray,
+    target_pixel: tuple[int, int],
+    target_index,
+    slitlet: int,
+    frame_2d: HDUList,
+    trace_models: list[
+        list[
+        Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]
+        ]
+    ],
+    dewiggling_radius: float,
+    central_reference_spectrum_radius: float,
+    srcalias: str,
+    conversion_factor: float = 1.,
+) -> None:
+    if not plot:
+        return None
+
+    logger.debug("Plotting the map and slice traces for the target pixel")
+
+    fig, axes = plt.subplots(
+        2,
+        1,
+        figsize=(6.0, 9.7),
+        height_ratios=[1, 1.61],
+    )
+    fig.subplots_adjust(
+        left=0.12,
+        right=0.98,
+        bottom=0.05,
+        top=0.93,
+        hspace=0.2,
+    )
+
+    axes[0].set_title(f'Median image and slitlet cutout for\nSource {srcalias}')
+    yaxis = conversion_factor * (axis_pixel - axis_pixel[target_pixel[1]])
+
+    axes[0].scatter(yaxis, image[0, :], c='k')
+
+    # axes[0].set_ylim(np.nanpercentile((image), 0.1), np.nanmax((image)))
+
+    # for v in [dewiggling_radius, central_reference_spectrum_radius]:
+    #     for ss in [-1, 1]:
+    #         axes[0].axvline(ss * v, c='r', linestyle=':')
+    # axes[0].axvline(0, 0, c="k",linestyle='--')
+
+    axes[0].axvline(
+        conversion_factor * (axis_pixel[target_index[1]] - axis_pixel[target_pixel[1]]),
+        c="xkcd:orange",
+        lw=2,
+        label=f'Pixel {target_index[1]}'
+    )
+
+    axes[0].axvspan(
+                -dewiggling_radius,
+                dewiggling_radius,
+                color='b',
+                alpha=0.3, label='Dewiggling Region',
+                edgecolor=None)
+
+    axes[0].axvspan(
+                -central_reference_spectrum_radius,
+                central_reference_spectrum_radius,
+                color='r',
+                alpha=0.3, label='Central Spectrum region',
+                edgecolor=None)
+
+    # axes[0].set_aspect("auto")
+    # axes[0].set_xlabel("Index 1, Pixel Axis, arcsec")
+
+    axes[0].legend(fontsize=6)
+    axes[0].set_ylabel("Flux\n(arbitrary)")
+    axes[0].set_xlabel("Pixel Axis\n(px; index 1; relative to central pixel)")
+
+    image_for_map = (frame_2d.data)
+
+    axes[1].imshow(
+        image_for_map,
+        cmap="binary",
+        origin="lower",
+        vmin=np.nanpercentile(image_for_map, 10.0),
+        vmax=np.nanpercentile(image_for_map, 98),
+        interpolation="nearest",
+        label='Slitlet image',
+    )
+
+    axes[1].plot(
+        trace_models[0][1](axis_spectral),
+        trace_models[0][0](axis_spectral),
+        c="xkcd:orange",
+        linestyle="-",
+        lw=1,
+        label=f'Pixel {target_index[1]} trace'
+    )
+
+    axes[1].legend(fontsize=6)
+    axes[1].set_ylabel("Detector x pixel")
+    axes[1].set_xlabel("Detector y pixel")
+    axes[1].set_aspect("auto")
 
     if isinstance(plot, PdfPages):
         plot.savefig()
@@ -935,7 +1384,7 @@ def build_population_diagnostics(
             hspace=gap / target_panel_height,
         )
 
-        _build_image_map(
+        _build_image_map_ifu(
             fig,
             axes[0],
             axis_pixel,
@@ -988,7 +1437,7 @@ def build_population_diagnostics(
     return None
 
 
-def dewiggler_stack(
+def dewiggler_stack_ifu(
     frame_2d_filename: str,
     frame_3d_filename: str,
     output_frame_filename: str,
@@ -1091,21 +1540,29 @@ def dewiggler_stack(
 
     detector = determine_detector_name(frame_2d)
 
-    frame_2d_wcs, frame_3d_wcs = get_wcs(
+    frame_2d_wcs, frame_3d_wcs = get_wcs_ifu(
         frame_2d_filename, frame_3d, use_cached_wcs=use_cached_wcs
     )
 
-    axis_pixel, axis_slice, axis_spectral = get_principal_axes(frame_3d)
+    axis_pixel, axis_slice, axis_spectral = get_principal_axes_ifu(frame_3d)
 
+    print(f'{axis_pixel.shape=}')
+    print(f'{axis_slice.shape=}')
+    print(f'{axis_spectral.shape=}')
     spatial_arr = determine_spatial_arr(axis_pixel, axis_slice)
 
+
+    print(f'{spatial_arr.shape=}')
+    # exit()
     plot = initialize_plot(plot)
 
     logger.info("Constructing a median image")
 
     image = determine_image(frame_3d)
 
-    target_pixel = determine_target_pixel(
+    print(f'{image.shape=}')
+
+    target_pixel = determine_target_pixel_ifu(
         target_pixel=target_pixel,
         target_radec=target_radec,
         frame_3d_wcs=frame_3d_wcs,
@@ -1117,9 +1574,11 @@ def dewiggler_stack(
     target_pixel = (target_pixel[1] - 1, target_pixel[0] - 1)
     target_wiggle_pixels = [[t - 1 for t in tp][::-1] for tp in target_wiggle_pixels]
 
-    spaxel_distance = determine_spaxel_distances(spatial_arr, target_pixel)
+    spaxel_distance = determine_spaxel_distances(spatial_arr, target_pixel, conversion_factor = 3600)
 
-    build_image_map(
+
+    
+    build_image_map_ifu(
         plot,
         axis_pixel,
         axis_slice,
@@ -1144,6 +1603,9 @@ def dewiggler_stack(
             reference_spectra_percentile_cut=reference_spectra_percentile_cut,
         )
     )
+
+    # close_plot(plot)
+    # exit()
 
     background_reference_spectrum, pf_back, smoothed_background_reference_spectrum = (
         determine_reference_spectrum(
@@ -1283,7 +1745,7 @@ def dewiggler_stack(
             for slice_index in target_slices
         ]
 
-        build_spaxel_map_plot(
+        build_spaxel_map_plot_ifu(
             plot,
             axis_pixel,
             axis_slice,
@@ -1492,7 +1954,509 @@ def dewiggler_stack(
     return plot
 
 
-def parse_yaml_arguments_and_dewiggle(getter):
+def identify_slitlets(frame_2d, frame_3d, srcalias):
+    for slitlet_2d in range(len(frame_2d)):
+        # line_src = frame_2d[slitlet_2d].header.get('SRCALIAS', 'UNKNOWN')
+        # print(f'x{line_src}x')
+        if frame_2d[slitlet_2d].header.get('SRCALIAS', 'UNKNOWN') == str(srcalias):
+            break
+    
+    for slitlet_3d in range(len(frame_3d)):
+        if frame_3d[slitlet_3d].header.get('SRCALIAS', 'UNKNOWN') == str(srcalias):
+            break
+    
+    return int((slitlet_2d - 1) / 10), int((slitlet_3d - 1) / 8)
+
+
+def dewiggler_stack_msa(
+    frame_2d_filename: str,
+    frame_3d_filename: str,
+    output_frame_filename: str,
+    target_pixel: int = -1,
+    plot: str | PdfPages | bool = False,
+    dewiggling_radius: float = 0.5,
+    slitlet: int = 0,
+    central_reference_spectrum_radius: float = 0.2,
+    smooth_model_poly_order: int = 5,
+    diagnostic_fraction: int = 1,
+    background_reference_spectrum_radii: tuple[float, float] = (1.0, 1.5),
+    fractional_residual_threshold: float = 0.05,
+    fit_param_fractional_residual_improvement_threshold: float = 0.001,
+    n_jobs: int = 1,
+    perform_dewiggling: bool = True,
+    target_radec: tuple[float, float] = (0.0, 0.0),
+    min_fit_params: dict = {
+        "alpha_order": 0,
+        "beta_order": 1,
+        "gamma_order": 0,
+        "order": 1,
+    },
+    max_fit_params: dict = {
+        "alpha_order": 0,
+        "beta_order": 4,
+        "gamma_order": 0,
+        "order": 5,
+    },
+    target_wiggle_pixels: list = [],
+    mask_bad_fits: bool = True,
+    slices_to_use: list = [0],
+    reference_spectra_percentile_cut: float = 1,
+    try_different_slice_threshold: float = 0.025,
+    weight_based_masking_threshold: Optional[float | None] = 0.5,
+    fft_order_width=0.1,
+    power_ratio_threshold=3.0,
+    masked_regions: list = [],
+    srcalias: str = 'UNKNOWN',
+) -> object:
+    """
+    :type slices_to_use: list
+    :param slices_to_use: This is a list of slice numbers to use for the dewiggling. We
+        will estimate the slice number from the pixel location, then incrementally try
+        the slices in this list. A zero here corrsponds to the estimated slice number
+        and a negative number corresponds to one index lower than that estimate.
+    :param frame_2d_filename: This is the path to the 2D detector-frame fits file.
+    :param frame_3d_filename: This is the path to the 3D rectified fits file.
+    :param output_frame_filename: This is the path to the output 3D dewiggled fits file.
+    :param target_pixel: This is the central pixel associated with the point-source. If
+        not provided, the code will use either the provided RA and Dec or attempt to
+        find the peak of the median image.
+    :param plot: This is either a filename where a resultant pdf file will be placed or
+        a pdfpages object where the plots will be appended.
+    :param dewiggling_radius: This is the radius in arcseconds within which the
+        dewiggling will be performed.
+    :param central_reference_spectrum_radius: The point-source spectrum will be
+        estimated from an average of pixels within this radius.
+    :param smooth_model_poly_order: The order of the polynomial used to smooth the
+        reference spectra.
+    :param diagnostic_fraction: For faster diagnostics, only dewiggle every Nth pixel.
+        For example, if diagnostic_fraction=10, only dewiggle every 10th pixel.
+    :param background_reference_spectrum_radii: The background spectrum will be
+        estimated from an average of pixels between these radii.
+    :param fractional_residual_threshold: If the fractional residual is above this
+    threshold, the fit is considered bad.
+    :param fit_param_fractional_residual_improvement_threshold: When iterating through
+        the fit parameters, if the fractional residual improvement is below this
+        threshold, the fit is not considered to be improved.
+    :param n_jobs: The number of jobs to use for parallel processing. If plotting is
+        enabled, this is ignored.
+    :param perform_dewiggling: Flag whether to actually perform the dewiggling or to
+        just diagnostics.
+    :param target_radec: The target Ra and Dec in degrees (ICRS) corresponding to the
+        point source.
+    :param use_cached_wcs: Use the cached WCS if available.
+    :param min_fit_params: A dictionary containing the minimum fit orders to use. The
+        dictionary should include the keys 'alpha_order', 'beta_order', 'gamma_order',
+        and 'order'.
+    :param max_fit_params: A dictionary containing the maximum fit orders to use. The
+        dictionary should include the keys 'alpha_order', 'beta_order', 'gamma_order',
+        and 'order'.
+    :param target_wiggle_pixels: A list of specific pixels to dewiggle (e.g., as a
+        diagnostic). If not provided, the code will use all pixels within the
+        dewiggling radius.
+    :param mask_bad_fits: If True, replace the spectra in the output cube with NaNs if
+        the fit is bad.
+    :param reference_spectra_percentile_cut: When constructing the reference spectra,
+        ignore pixels in the top Nth or bottom Nth percentile. 0 here corresponds to no
+        cut.
+    :param weight_based_masking_threshold: Perform a masking of the spectra based on
+        the weights. If the weight is below this fraction of the median weight, the
+        pixel will be masked.
+    :return: The plot object containing all diagnostics.
+    """
+
+    logger.info("Initiating dewiggler...")
+
+    frame_2d, frame_3d, frame_2d_shortname, frame_3d_shortname = load_frames(
+        frame_2d_filename, frame_3d_filename
+    )
+
+    slitlet_2d, slitlet_3d = identify_slitlets(frame_2d, frame_3d, srcalias)
+
+    frame_2d_wcs, frame_3d_wcs, frame_2d_model, frame_3d_model = get_wcs_msa(
+        frame_2d_filename, frame_3d_filename)
+
+    axis_pixel, axis_slice, axis_spectral = get_principal_axes_msa(
+                                                frame_3d, frame_3d_wcs, slitlet_3d)
+
+    spatial_arr = determine_spatial_arr(axis_pixel, axis_slice)
+
+    plot = initialize_plot(plot)
+
+    logger.info("Constructing a median image")
+
+    image = determine_image(frame_3d, frame_index=8 * slitlet_3d + 1, collapse_axis=1)
+
+    target_pixel = determine_target_pixel_msa(
+        target_pixel=target_pixel,
+        target_radec=target_radec,
+        frame_3d_wcs=frame_3d_wcs,
+        image=image,
+    )
+
+    # TODO need to change all future references to target_pixel to be [y+1, x+1]
+    # instead of [x, y]
+
+    target_pixel = (target_pixel[1] - 1, target_pixel[0] - 1)
+    target_wiggle_pixels = [[t - 1 for t in tp][::-1] for tp in target_wiggle_pixels]
+
+    spaxel_distance = determine_spaxel_distances(spatial_arr,
+                                                 target_pixel,
+                                                 conversion_factor=1.0)
+
+    # interpret the background radii.
+
+    if -1 in background_reference_spectrum_radii:
+        background_reference_spectrum_radii = (-1, -1)
+
+    build_image_map_msa(
+        plot,
+        axis_pixel,
+        axis_slice,
+        image,
+        spaxel_distance,
+        target_pixel,
+        frame_3d_shortname,
+        dewiggling_radius,
+        central_reference_spectrum_radius,
+        background_reference_spectrum_radii,
+    )
+
+    central_reference_spectrum, pf, smoothed_reference_spectrum = (
+        determine_reference_spectrum(
+            frame_3d_shortname,
+            axis_spectral,
+            frame_3d,
+            spaxel_distance,
+            0.0,
+            central_reference_spectrum_radius,
+            smooth_model_poly_order,
+            reference_spectra_percentile_cut=reference_spectra_percentile_cut,
+            data_frame_index=8 * slitlet_3d + 1,
+            data_quality_frame_index=None,
+        )
+    )
+
+    background_reference_spectrum, pf_back, smoothed_background_reference_spectrum = (
+        determine_reference_spectrum(
+            frame_3d_shortname,
+            axis_spectral,
+            frame_3d,
+            spaxel_distance,
+            background_reference_spectrum_radii[0],
+            background_reference_spectrum_radii[1],
+            smooth_model_poly_order,
+            reference_spectra_percentile_cut=reference_spectra_percentile_cut,
+            data_frame_index=8 * slitlet_3d + 1,
+            data_quality_frame_index=None,
+        )
+    )
+
+    if np.nan in pf_back:
+        pf_back = np.zeros_like(pf_back)
+        smoothed_background_reference_spectrum = np.zeros_like(
+            smoothed_background_reference_spectrum
+        )
+        background_reference_spectrum = np.zeros_like(
+            background_reference_spectrum
+        )
+
+    build_reference_spectra_plot(
+        plot,
+        axis_spectral,
+        central_reference_spectrum,
+        smoothed_reference_spectrum,
+        background_reference_spectrum,
+        smoothed_background_reference_spectrum,
+        frame_3d_shortname,
+        central_reference_spectrum_radius,
+        background_reference_spectrum_radii,
+        smooth_model_poly_order,
+        unit='px',
+    )
+
+    # Now start iterating through the wiggly pixels
+    wiggly_pixels = np.where(
+        (~np.isnan(image)) * (spaxel_distance.T <= dewiggling_radius)
+    )
+
+    if len(target_wiggle_pixels) > 0:
+        wiggly_pixels = np.asarray(target_wiggle_pixels).T
+
+    logger.info("Beginning main dewiggling loop...")
+    logger.info(
+        f'Found {len(wiggly_pixels[0])} wiggly pixels within {dewiggling_radius} px'
+    )
+    if diagnostic_fraction != 1:
+        logger.info(f"Only dewiggling every {diagnostic_fraction}th pixel")
+
+    def dewiggle_main_loop(i: int):
+
+        target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
+        dist = spaxel_distance[target_index[1], target_index[0]]
+
+        logger.info("")
+        logger.info(
+            80 * "~"
+        )
+        logger.info(
+            80 * "~"
+        )
+
+        inner_log_msg = (
+            f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
+        )
+        start_gap = (70 - len(inner_log_msg)) // 2
+        end_gap = 70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg)
+        logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
+
+        second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
+        start_gap = (70 - len(second_line_msg)) // 2
+        end_gap = 70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg)
+        logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
+
+        logger.info(
+            80 * "~"
+        )
+        logger.info(
+            80 * "~"
+        )
+        logger.info("")
+
+        logger.debug("Weight-based masking is disabled.")
+        weight_based_mask = np.ones_like(axis_spectral)
+        
+        explicit_mask = np.ones_like(axis_spectral)
+        if len(masked_regions) > 0:
+            logger.debug("Applying masked regions")
+            for m in masked_regions:
+                logger.info("Applying mask {m[0]}-{m[1]}")
+                explicit_mask[
+                    (axis_spectral >= m[0]) & (axis_spectral <= m[1])
+                ] = 0
+
+        weight_based_mask = weight_based_mask * explicit_mask
+        weight_based_mask = weight_based_mask.astype(bool)
+
+        world_coords = frame_3d_wcs[slitlet_3d].pixel_to_world(
+            int(len(axis_spectral) / 2.), target_index[1]
+        )
+
+        trace_models = [
+            get_trace_model(
+                frame_2d_wcs[slitlet_2d],
+                world_coords[0].ra.deg,
+                world_coords[0].dec.deg
+            )
+        ]
+
+        build_spaxel_map_plot_msa(
+            plot,
+            axis_pixel,
+            axis_slice,
+            axis_spectral,
+            image,
+            spaxel_distance,
+            target_pixel,
+            target_index,
+            None,
+            frame_2d[10 * slitlet_2d + 1],
+            trace_models,
+            dewiggling_radius,
+            central_reference_spectrum_radius,
+            srcalias,
+        )
+
+        base_x2 = 1e10
+        preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
+        preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
+        preferred_wiggle_fft = {}
+
+        logger.debug(f"Starting the dewiggler for index {i}!")
+        # for tindex, target_slice in enumerate(target_slices):
+        # if base_x2**0.5 < try_different_slice_threshold:
+        #     continue
+
+        logger.info(
+            40 * "-~"
+        )
+        # logger.info(
+        #     f"  Current √𝜈 = {base_x2**0.5:.4f} > "
+        #     f"{try_different_slice_threshold:.4f}"
+        # )
+        logger.info(f"  Trying trace for srcalias {srcalias}")
+        logger.info(
+            40 * "-~"
+        )
+
+        model_trace = [
+            [trace_models[0][0], trace_models[0][0]],
+            [trace_models[0][0], trace_models[0][0]],
+        ]
+
+        wiggle_model, dewiggled_spectrum, x2, xsol, model_details, wiggle_fft = (
+            dewiggle_lambda_space(
+                model_trace,
+                pf,
+                axis_spectral,
+                frame_3d[8 * slitlet_3d + 1].data[target_index[1], :],
+                None,
+                plot=plot,
+                plot_label=(
+                    f'Pixel {target_index[1]}; R = {dist:.1f} px; '
+                    f'Src {srcalias}'
+                ),
+                background_pf=pf_back,
+                min_fit_params=min_fit_params,
+                max_fit_params=max_fit_params,
+                sqrt_nu_improvement_threshold=(
+                    fit_param_fractional_residual_improvement_threshold
+                ),
+                target_maskarray=weight_based_mask,
+            )
+        )
+
+        logger.info(
+            40 * "-~"
+        )
+        logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {slitlet_3d + 1}")
+        logger.info(f"  Previous best was {base_x2**0.5:.4f}")
+        logger.info(
+            40 * "-~"
+        )
+
+        if (x2 < base_x2) or (preferred_wiggle_model is None):
+            base_x2 = x2
+            preferred_wiggle_model = wiggle_model
+            preferred_dewiggled_spectrum = dewiggled_spectrum
+            preferred_wiggle_fft = wiggle_fft
+
+        return (
+            xsol,
+            model_details,
+            target_index,
+            preferred_dewiggled_spectrum,
+            preferred_wiggle_fft,
+            base_x2,
+        )
+
+    if get_plot_status(plot):
+        logger.warning(
+            "Plotting is active, so defaulting to serial processing with n_jobs=1"
+        )
+        n_jobs = 1
+
+    xsol_fn = output_frame_filename.replace(".fits", ".pkl")
+
+    if perform_dewiggling:
+
+        total_steps = len(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
+        xsols = ProgressParallel(
+            n_jobs=n_jobs, verbose=0, require="sharedmem", total=total_steps
+        )(
+            delayed(dewiggle_main_loop)(i)
+            for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
+        )
+        d.dump(xsols, open(xsol_fn, "wb"))
+
+    xsols = d.load(open(xsol_fn, "rb"))
+
+    for xindex, x in enumerate(xsols):
+
+        bad_fit = False
+
+        retries = 0
+        retry_allowed = True
+
+        while retry_allowed:
+
+            if retries == 1:
+                retry_allowed = False
+
+            retries += 1
+
+            target_index = x[2]
+            preferred_dewiggled_spectrum = x[3]
+            fit_x2 = x[5]
+
+            if fit_x2**0.5 > fractional_residual_threshold:
+                bad_fit = True
+
+            # Compute the amplitudes of the fft modes.
+
+            # First, make sure that 'freq' is in the dictionary:
+            if 'freq' in x[4].keys():
+                fft_freq = x[4]['freq']
+                p1_indices = (
+                    (fft_freq[:] >= 1 - fft_order_width) &
+                    (fft_freq[:] <= 1 + fft_order_width)
+                )
+
+                p1 = np.mean(np.abs(x[4]['residual_fft'][p1_indices]))
+                pavg = np.mean(np.abs(x[4]['residual_fft']))
+                logger.info('')
+
+                if p1 / pavg > power_ratio_threshold:
+                    bad_fit = True
+
+                logger.info(
+                    f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
+                    f"{fit_x2**0.5:.4f}."
+                    f"    and P(1) / P(3/2) = {p1 / pavg:.4f}."
+                )
+            else:
+                bad_fit = True
+
+            if mask_bad_fits & bad_fit:
+                logger.warning("Masking this pixel.")
+
+                if retry_allowed:
+                    try:
+                        frame_3d[1].data[:, target_index[0], target_index[1]] = \
+                            preferred_dewiggled_spectrum
+                        x = dewiggle_main_loop(xindex)
+                    except Exception as e:
+                        logger.warning(
+                            f"Error in dewiggle_main_loop: {e}"
+                        )
+                        preferred_dewiggled_spectrum = (
+                            np.ones_like(preferred_dewiggled_spectrum) * np.nan
+                        )
+
+                else:
+                    preferred_dewiggled_spectrum = (
+                        np.ones_like(preferred_dewiggled_spectrum) * np.nan
+                    )
+
+        # frame_3d[1].data[
+        #     :, target_index[0], target_index[1]
+        # ] = preferred_dewiggled_spectrum
+
+        frame_3d[8 * slitlet_3d + 1].data[target_index[1], :] = preferred_dewiggled_spectrum
+    logger.info("Dewiggling complete!")
+
+    # build_population_diagnostics(
+    #     plot,
+    #     axis_pixel,
+    #     axis_slice,
+    #     image,
+    #     spaxel_distance,
+    #     target_pixel,
+    #     frame_3d_shortname,
+    #     dewiggling_radius,
+    #     central_reference_spectrum_radius,
+    #     background_reference_spectrum_radii,
+    #     xsols,
+    #     wiggly_pixels,
+    #     diagnostic_fraction=diagnostic_fraction,
+    # )
+    close_plot(plot)
+
+    frame_3d.writeto(output_frame_filename, overwrite=True)
+
+    return plot
+
+
+def parse_yaml_arguments_and_dewiggle_ifu(getter):
 
     input_2d_prototype = getter("input_2d_filename_prototype")
     input_3d_prototype = getter("input_3d_filename_prototype")
@@ -1542,7 +2506,7 @@ def parse_yaml_arguments_and_dewiggle(getter):
                     .replace("FRAME", target_frame).split("/")[-1]}'
             )
 
-            dewiggler_stack(
+            dewiggler_stack_ifu(
                 input_2d_prototype.replace("DETECTOR", target_detector).replace(
                     "FRAME", target_frame
                 ),
@@ -1586,7 +2550,101 @@ def parse_yaml_arguments_and_dewiggle(getter):
     return 0
 
 
-def parse_yaml_arguments_and_batch_dewiggle(getter):
+def parse_yaml_arguments_and_dewiggle_msa(getter):
+
+    input_2d_prototype = getter("input_2d_filename_prototype")
+    input_3d_prototype = getter("input_3d_filename_prototype")
+    output_filename_prototype = getter("output_filename_prototype")
+    target_detectors = getter("target_detectors")
+    target_frames = getter("target_frames")
+
+    assert target_frames is not [
+        ""
+    ], "No target frames specified and I don't yet know how to handle that..."
+
+    log_filename_prototype = (
+        output_filename_prototype.replace(".gz", "").replace(".fits", "") + ".log"
+    )
+    plot_filename_prototype = getter("plot_filename_prototype")
+
+    for target_frame in target_frames:
+        for target_detector in target_detectors:
+
+            log_filename = log_filename_prototype.replace(
+                "DETECTOR", target_detector
+            ).replace("FRAME", target_frame)
+
+            if plot_filename_prototype:
+                plot_filename = plot_filename_prototype.replace(
+                    "DETECTOR", target_detector
+                ).replace("FRAME", target_frame)
+            else:
+                plot_filename = False
+
+            # logger = logging.getLogger()
+
+            with open(log_filename, "w"):
+                pass
+
+            logging.basicConfig(
+                format="%(asctime)s: %(funcName)-24s | %(levelname)-8s | %(message)s",
+                datefmt="%Y-%m-%d %I:%M:%S %p",
+                filename=log_filename,
+                level=logging.INFO,
+                force=True,
+            )
+
+            logger.info(
+                f'Beginning dewiggler task {getter("label", "")} on '
+                f'{input_3d_prototype.replace("DETECTOR", target_detector)
+                    .replace("FRAME", target_frame).split("/")[-1]}'
+            )
+
+            dewiggler_stack_msa(
+                input_2d_prototype.replace("DETECTOR", target_detector).replace(
+                    "FRAME", target_frame
+                ),
+                input_3d_prototype.replace("DETECTOR", target_detector).replace(
+                    "FRAME", target_frame
+                ),
+                output_filename_prototype.replace("DETECTOR", target_detector).replace(
+                    "FRAME", target_frame
+                ),
+                target_pixel=getter("central_pixel"),
+                plot=plot_filename,
+                dewiggling_radius=getter("dewiggling_radius"),
+                central_reference_spectrum_radius=getter(
+                    "central_reference_spectrum_radius"
+                ),
+                diagnostic_fraction=getter("diagnostic_fraction"),
+                smooth_model_poly_order=getter("smooth_model_poly_order"),
+                background_reference_spectrum_radii=getter(
+                    "background_reference_spectrum_radii"
+                ),
+                fractional_residual_threshold=getter("fractional_residual_threshold"),
+                fit_param_fractional_residual_improvement_threshold=getter(
+                    "fit_param_fractional_residual_improvement_threshold"
+                ),
+                n_jobs=int(getter("n_jobs")),
+                perform_dewiggling=bool(getter("perform_dewiggling")),
+                target_radec=tuple(getter("target_radec")),
+                min_fit_params=getter("min_fit_params"),
+                max_fit_params=getter("max_fit_params"),
+                target_wiggle_pixels=getter("target_wiggly_pixels"),
+                masked_regions=getter("masked_regions"),
+                mask_bad_fits=bool(getter("mask_bad_fits")),
+                slices_to_use=getter("slices_to_use"),
+                reference_spectra_percentile_cut=getter(
+                    "reference_spectra_percentile_cut"
+                ),
+                try_different_slice_threshold=getter("try_different_slice_threshold"),
+                srcalias=getter("srcalias"),
+            )
+
+    return 0
+
+
+def parse_yaml_arguments_and_batch_dewiggle_ifu(getter):
 
     # This function should loop through the list contained in 'central_pixel' and for
     # each element build a modified getter plugging in appropriate modifications to
@@ -1638,29 +2696,100 @@ def parse_yaml_arguments_and_batch_dewiggle(getter):
 
         partial_getter = partial(getter, override=[override])
 
-        parse_yaml_arguments_and_dewiggle(partial_getter)
+        parse_yaml_arguments_and_dewiggle_ifu(partial_getter)
+
+    return 0
+
+def parse_yaml_arguments_and_batch_dewiggle_msa(getter):
+
+    # This function should loop through the list contained in 'central_pixel' and for
+    # each element build a modified getter plugging in appropriate modifications to
+    # the output filenames and central pixel and pass that getter to the single dewiggle
+    # parser.
+
+    # This function should transparently pass most all arguments from getter along to
+    # the various single-dewiggle passes.
+    # The exceptions are
+    # 1. central_pixel must be provided here and must be a list of 2-tuples
+    # 2. input_3d_filename_prototype will be modified to chain the output of one
+    #    step to the next
+    # 3. output_filename_prototype will be modified similar to inptu_3d_filename
+    # 4. plot_filename_prototype similar.
+
+    input_3d_prototype = getter("input_3d_filename_prototype")
+
+    central_pixels = getter("central_pixel")
+
+    output_filename_prototypes = [
+        getter("output_filename_prototype").replace('PIXEL', f'{c[0]}_{c[1]}')
+        for c in central_pixels
+    ]
+    plot_filename_prototype = getter("plot_filename_prototype")
+
+    if plot_filename_prototype:
+        plot_filename_prototypes = [
+            plot_filename_prototype.replace("PIXEL", f"{c[0]}_{c[1]}")
+            for c in central_pixels
+        ]
+    else:
+        plot_filename_prototypes = [False for c in central_pixels]
+
+    input_3d_prototypes = (
+        [getter("input_3d_filename_prototype")] + output_filename_prototypes[:-1]
+    )
+
+    for (input_3d_prototype, output_filename_prototype,
+            plot_filename_prototype, central_pixel) in zip(
+            input_3d_prototypes, output_filename_prototypes, plot_filename_prototypes,
+            central_pixels):
+
+        override = {
+            'input_3d_filename_prototype': input_3d_prototype,
+            'output_filename_prototype': output_filename_prototype,
+            'plot_filename_prototype': plot_filename_prototype,
+            'central_pixel': central_pixel,
+        }
+
+        partial_getter = partial(getter, override=[override])
+
+        parse_yaml_arguments_and_dewiggle_msa(partial_getter)
 
     return 0
 
 
-single_dewiggle_step = {
-    "target_step_type": "dewiggle",
-    "target_function": parse_yaml_arguments_and_dewiggle,
-    "default_options": single_dewiggle_default_options,
-    "necessary_arguments": single_dewiggle_necessary_arguments,
+single_dewiggle_ifu_step = {
+    "target_step_type": "dewiggle_ifu",
+    "target_function": parse_yaml_arguments_and_dewiggle_ifu,
+    "default_options": single_dewiggle_ifu_default_options,
+    "necessary_arguments": single_dewiggle_ifu_necessary_arguments,
 }
 
-batch_dewiggle_step = {
-    "target_step_type": "batch_dewiggle",
-    "target_function": parse_yaml_arguments_and_batch_dewiggle,
-    "default_options": batch_dewiggle_default_options,
-    "necessary_arguments": batch_dewiggle_necessary_arguments,
+batch_dewiggle_ifu_step = {
+    "target_step_type": "batch_dewiggle_ifu",
+    "target_function": parse_yaml_arguments_and_batch_dewiggle_ifu,
+    "default_options": batch_dewiggle_ifu_default_options,
+    "necessary_arguments": batch_dewiggle_ifu_necessary_arguments,
+}
+
+single_dewiggle_msa_step = {
+    "target_step_type": "dewiggle_msa",
+    "target_function": parse_yaml_arguments_and_dewiggle_msa,
+    "default_options": single_dewiggle_msa_default_options,
+    "necessary_arguments": single_dewiggle_msa_necessary_arguments,
+}
+
+batch_dewiggle_msa_step = {
+    "target_step_type": "batch_dewiggle_msa",
+    "target_function": parse_yaml_arguments_and_batch_dewiggle_msa,
+    "default_options": batch_dewiggle_msa_default_options,
+    "necessary_arguments": batch_dewiggle_msa_necessary_arguments,
 }
 
 
 def dewiggler_wrapper(yaml_file):
 
-    ingest_yaml(yaml_file, [single_dewiggle_step, batch_dewiggle_step])
+    ingest_yaml(yaml_file, [single_dewiggle_ifu_step, batch_dewiggle_ifu_step,
+                            single_dewiggle_msa_step, batch_dewiggle_msa_step])
 
     return
 

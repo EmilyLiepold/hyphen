@@ -6,6 +6,7 @@ from numpy.fft import fft
 from scipy.optimize import curve_fit
 from typing import Callable
 from functools import partial
+from .helpers import get_ybounds
 logger = logging.getLogger(__name__)
 
 
@@ -434,11 +435,21 @@ def dewiggle_lambda_space(
 
     normalization = np.polyval(continuum_model, lam)
     good_indices = np.isfinite(target_spectrum)
+
+    # print(target_spectrum.shape)
+
+    # print(target_spectrum)
+
+    # print(good_indices)
+
+    # print(target_spectrum[good_indices])
+
+    # exit()
     logger.debug(
         f"The continuum model polynomial parameters are {continuum_model}",
     )
     logger.debug("The target_spectrum has ")
-    logger.debug("    np.nanmin = {np.nanmin(target_spectrum[good_indices])}")
+    logger.debug(f"    np.nanmin = {np.nanmin(target_spectrum[good_indices])}")
     logger.debug(f" and np.nanmax = {np.nanmax(target_spectrum[good_indices])}")
 
     normalized_spectrum = target_spectrum / normalization
@@ -462,6 +473,9 @@ def dewiggle_lambda_space(
     )
 
     good_indices = np.isfinite(normalized_spectrum)
+
+    if dq_spectrum is None:
+        dq_spectrum = np.zeros_like(target_spectrum)
     good_indices = (
         good_indices
         * (dq_spectrum[:] == 0)
@@ -487,7 +501,10 @@ def dewiggle_lambda_space(
     )
 
     def background_prototype_exact(x):
-        return (
+        if background_normalization == 0:
+            return np.zeros_like(x)
+        else:
+            return (
             np.polyval(background_pf, inverse_model(x))
             / np.polyval(continuum_model, inverse_model(x))
             / background_normalization
@@ -749,122 +766,170 @@ def dewiggle_lambda_space(
             fit_params,
         )
 
-        fig, axes = plt.subplots(5, 1, figsize=(10, 16))
+        fig, axes = plt.subplots(1, 1, figsize=(6.0, 3.75))
+        fig2, axes2 = plt.subplots(3, 1, figsize=(6.0, 9.7))
 
-        fig.suptitle(
+        fig.subplots_adjust(left=0.1, right=0.98, top=0.87, bottom=0.12, hspace=0.0)
+        
+        fig2.subplots_adjust(left=0.12, right=0.98, top=0.95, bottom=0.06, hspace=0.1)
+
+        axes.set_title(
             f"{plot_label}\n"
-            f"x2 = {x2:.3f}, sqrt(nu) = {reduced_x2**0.5:.3f}, f = {f:.5f}"
+            f"RMS residual = {100 * reduced_x2**0.5:.2f}%"
         )
 
-        axes[0].set_ylabel("Flux, arbitrary")
-        axes[0].plot(lam, target_spectrum, label="Input Spectrum", c="k")
-        axes[0].plot(
-            lam,
-            target_spectrum
-            - normalization_constant * normalization * jwm(*xsol)(med_px),
-            label="Dewiggled Spectrum",
-            c="r",
+        axes2[0].set_title(
+            f"{plot_label}\n"
+            f"RMS residual = {100 * reduced_x2**0.5:.2f}%"
         )
 
-        axes[0].legend(fontsize=6)
+        # axes[0].set_ylabel("Flux, arbitrary")
+        # axes[0].plot(lam, target_spectrum, label="Input Spectrum", c="k")
 
-        axes[1].plot(x_vals, y_for_fft, label="Input Spectrum", c="k")
-        axes[1].plot(x_vals, ww(x_vals, *xsol), label="Full Model", c="g")
-        axes[1].plot(
+        # yrange = get_ybounds([1e50, 1e-50], target_spectrum)
+        # axes[0].plot(
+        #     lam,
+        #     target_spectrum
+        #     - normalization_constant * normalization * jwm(*xsol)(med_px),
+        #     label="Dewiggled Spectrum",
+        #     c="r",
+        # )
+
+        # yrange = get_ybounds(
+        #     yrange,
+        #     target_spectrum
+        #     - normalization_constant * normalization * jwm(*xsol)(med_px),
+        # )
+
+        # axes[0].set_ylim(0.9 * yrange[0], 1.1 * yrange[1])
+        # axes[0].legend(fontsize=6)
+
+        axes2[0].plot(x_vals, y_for_fft, label="Input Spectrum", c="k",
+                      linewidth=0.5,
+                      )
+        axes2[0].plot(x_vals, ww(x_vals, *xsol), label="Full Model", c="g",
+                      linewidth=0.5,
+                      )
+        axes2[0].plot(
             x_vals,
             ps_continuum,
-            label=f"PS Continuum model, alpha={xsol[0]:.2f}",
+            label=f"Central component: alpha={xsol[0]:.2f}",
             c="0.5",
             linestyle=":",
+            linewidth=0.5,
         )
-        axes[1].plot(
+        axes2[0].plot(
             x_vals,
             gal_continuum,
             # xsol[-1]
             # * np.polyval(background_pf, inverse_model(X_vals))
             # / np.polyval(continuum_model, inverse_model(X_vals)),
-            label=f"Gal Continuum model, gamma={xsol[1]:.2f}",
+            label=f"Background component: gamma={xsol[1]:.2f}",
             c="0.5",
             linestyle="dashed",
+            linewidth=0.5,
         )
-        axes[1].plot(x_vals, jwm(*xsol)(x_vals), label="Wiggle Model", c="b")
         envelope_args_str = ", ".join([f"{x:.2f}" for x in envelope_args])
-        axes[1].plot(
-            x_vals,
-            jwm(*xsol)(x_vals, envelope_only=True),
-            label=f"Wiggle Envelope,  l=({envelope_args_str})",
-            c="b",
-            linestyle=":",
-        )
-        axes[1].plot(
-            x_vals, -jwm(*xsol)(x_vals, envelope_only=True), c="b", linestyle=":"
-        )
-        axes[1].plot(
-            x_vals, y_for_fft - jwm(*xsol)(x_vals), label="Dewiggled Spectrum", c="r"
+        axes2[0].plot(x_vals, jwm(*xsol)(x_vals),
+                      linewidth=0.5,
+                      label=f"Wiggle Model\nl=({envelope_args_str})", c="b")
+        
+        # axes2[0].plot(
+        #     x_vals,
+        #     jwm(*xsol)(x_vals, envelope_only=True),
+        #     label=f"Wiggle Envelope,  l=({envelope_args_str})",
+        #     c="b",
+        #     linestyle=":",
+        # )
+        # axes2[0].plot(
+        #     x_vals, -jwm(*xsol)(x_vals, envelope_only=True), c="b", linestyle=":"
+        # )
+        axes2[0].plot(
+            x_vals, y_for_fft - jwm(*xsol)(x_vals), label="Dewiggled Spectrum", c="r",
+            linewidth=0.5,
         )
 
-        axes[1].legend(fontsize=6)
-        axes[1].set_ylabel("Flux, normalized by central continuum")
+        handles, labels = axes2[0].get_legend_handles_labels()
+        order = [0,1,4,5,2,3]  # desired order of legend entries (indices into handles/labels)
+        axes2[0].legend([handles[i] for i in order], [labels[i] for i in order],
+                        fontsize=6, loc='lower center', framealpha=1.0)
 
-        axes[2].plot(
+        axes2[0].set_ylabel("Flux, normalized (arbitrary)")
+        axes2[0].set_xlabel('Detector pixel (arbitrary offset)')
+
+        axes2[1].plot(
             x_vals,
             y_for_fft - ww(x_vals, *xsol),
-            label="Residual (black - green)",
+            label="Dewiggled spectrum minus continuum",
             c="r",
+            linewidth=0.5,
         )
-        axes[2].plot(
+        axes2[1].plot(
             x_vals,
             spectrum_without_continuum,
-            label="Spectrum without continuum",
+            label="Input spectrum minus continuum",
             c="k",
+            linewidth=0.5,
         )
 
-        ax_ylim = np.nanmax(np.abs(axes[2].get_ylim()))
-        axes[2].set_ylim(-ax_ylim, ax_ylim)
+        ax_ylim = np.nanmax(np.abs(axes2[1].get_ylim()))
+        axes2[1].set_ylim(-ax_ylim, ax_ylim)
 
-        axes[2].legend(fontsize=6)
-        axes[2].set_ylabel("Residual")
-        axes[2].axhline(-(reduced_x2**0.5), c="0.5", linestyle="--")
-        axes[2].axhline(0, c="0.5", linestyle="--")
-        axes[2].axhline(reduced_x2**0.5, c="0.5", linestyle="--")
+        axes2[1].set_ylabel("Residual")
+        axes2[1].set_xlabel('Detector pixel (arbitrary offset)')
+        axes2[1].axhline(-(reduced_x2**0.5), c="0.5", linestyle="--",label='5% residual', zorder=-10)
+        axes2[1].axhline(0, c="0.5", linestyle="--", zorder=-10)
+        axes2[1].axhline(reduced_x2**0.5, c="0.5", linestyle="--", zorder=-10)
+        axes2[1].legend(fontsize=6, loc='lower center')
 
-        axes[3].stem(
+        axes2[2].stem(
             freq,
             (np.abs(X_spec) / np.nanmax(np.abs(X_spec))),
             "k",
         )
-        axes[3].stem(
+        axes2[2].stem(
             freq,
             (np.abs(X_res) / np.nanmax(np.abs(X_spec))),
             "r",
         )
+        axes2[2].scatter([], [], c='k', label='Input spectrum minus continuum')
+        axes2[2].scatter([], [], c='r', label='Dewiggled spectrum minus continuum')
 
-        axes[3].set_xlim(-freq_trim, freq_trim)
-        axes[3].set_ylim(0, 1.0)
-        axes[4].set_ylabel("Flux, arbitrary")
-        axes[4].plot(lam, target_spectrum, label="Input Spectrum", c="k")
-        axes[4].plot(
+        axes2[2].set_xlim(0, freq_trim)
+        axes2[2].set_ylim(0, 1.0)
+
+        axes2[2].set_ylabel('Fourier spectrum')
+        axes2[2].set_xlabel('Frequency (1 / detector pixels)')
+
+        axes2[2].legend(fontsize=6, loc='upper right')
+        axes.set_ylabel("Flux, arbitrary")
+        axes.plot(lam, target_spectrum, label="Input Spectrum", c="k", linewidth=0.5,)
+        axes.plot(
             lam,
             normalization_constant * normalization * ww(med_px, *xsol),
             label="Full Model",
             c="g",
+            linewidth=0.5,
         )
-        axes[4].plot(
+        axes.plot(
             lam,
             normalization_constant * normalization * jwm(*xsol)(med_px),
             label="Wiggle Model",
             c="b",
+            linewidth=0.5,
         )
-        axes[4].plot(
+        axes.plot(
             lam,
             target_spectrum
             - normalization_constant * normalization * jwm(*xsol)(med_px),
             label="Dewiggled Spectrum",
             c="r",
+            linewidth=0.5,
         )
-        axes[4].legend(fontsize=6)
+        axes.legend(fontsize=6, loc='lower center', framealpha=1.0)
+        axes.set_xlabel("Wavelength (micron)")
         try:
-            axes[4].set_ylim(
+            axes.set_ylim(
                 np.nanmin(
                     (normalization_constant * normalization * jwm(*xsol)(med_px))[
                         good_indices
@@ -873,17 +938,21 @@ def dewiggle_lambda_space(
                 np.nanmax(target_spectrum[good_indices]),
             )
         except Exception:
-            axes[4].set_ylim(0, np.nanmax(target_spectrum[good_indices]))
+            axes.set_ylim(0, np.nanmax(target_spectrum[good_indices]))
 
-        axes[4].set_xlim(axes[0].get_xlim())
-        xlim = axes[1].get_xlim()
+        # axes.set_xlim(axes[0].get_xlim())
+        xlim = axes2[0].get_xlim()
         low_x = int(np.floor(xlim[0]))
         high_x = int(np.ceil(xlim[1]))
-        axes[1].set_xticks(np.arange(low_x, high_x, 1))
-        axes[1].grid()
+        axes2[0].set_xticks(np.arange(low_x, high_x, 1))
+        axes2[0].grid()
+        axes2[1].set_xticks(np.arange(low_x, high_x, 1))
+        axes2[1].grid(axis='x')
 
-        plot.savefig()
-        plt.close()
+        plot.savefig(fig)
+        plot.savefig(fig2)
+        plt.close(fig)
+        plt.close(fig2)
 
     return (
         0,
