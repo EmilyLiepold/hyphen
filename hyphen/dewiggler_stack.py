@@ -2702,7 +2702,7 @@ def parse_yaml_arguments_and_batch_dewiggle_ifu(getter):
 
 def parse_yaml_arguments_and_batch_dewiggle_msa(getter):
 
-    # This function should loop through the list contained in 'central_pixel' and for
+    # This function should loop through the list contained in 'srcalias' and for
     # each element build a modified getter plugging in appropriate modifications to
     # the output filenames and central pixel and pass that getter to the single dewiggle
     # parser.
@@ -2710,44 +2710,44 @@ def parse_yaml_arguments_and_batch_dewiggle_msa(getter):
     # This function should transparently pass most all arguments from getter along to
     # the various single-dewiggle passes.
     # The exceptions are
-    # 1. central_pixel must be provided here and must be a list of 2-tuples
+    # 1. srcalias must be provided here and must be a list of strs
     # 2. input_3d_filename_prototype will be modified to chain the output of one
     #    step to the next
-    # 3. output_filename_prototype will be modified similar to inptu_3d_filename
+    # 3. output_filename_prototype will be modified similar to input_3d_filename
     # 4. plot_filename_prototype similar.
 
     input_3d_prototype = getter("input_3d_filename_prototype")
 
-    central_pixels = getter("central_pixel")
+    srcalias = getter("srcalias")
 
     output_filename_prototypes = [
-        getter("output_filename_prototype").replace('PIXEL', f'{c[0]}_{c[1]}')
-        for c in central_pixels
+        getter("output_filename_prototype").replace('SRC', f'{src}')
+        for src in srcalias
     ]
     plot_filename_prototype = getter("plot_filename_prototype")
 
     if plot_filename_prototype:
         plot_filename_prototypes = [
-            plot_filename_prototype.replace("PIXEL", f"{c[0]}_{c[1]}")
-            for c in central_pixels
+            plot_filename_prototype.replace("SRC", f"{src}")
+            for src in srcalias
         ]
     else:
-        plot_filename_prototypes = [False for c in central_pixels]
+        plot_filename_prototypes = [False for src in srcalias]
 
     input_3d_prototypes = (
         [getter("input_3d_filename_prototype")] + output_filename_prototypes[:-1]
     )
 
     for (input_3d_prototype, output_filename_prototype,
-            plot_filename_prototype, central_pixel) in zip(
+            plot_filename_prototype, src) in zip(
             input_3d_prototypes, output_filename_prototypes, plot_filename_prototypes,
-            central_pixels):
+            srcalias):
 
         override = {
             'input_3d_filename_prototype': input_3d_prototype,
             'output_filename_prototype': output_filename_prototype,
             'plot_filename_prototype': plot_filename_prototype,
-            'central_pixel': central_pixel,
+            'srcalias': src,
         }
 
         partial_getter = partial(getter, override=[override])
