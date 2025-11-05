@@ -43,5 +43,5 @@ batch_dewiggle_msa_necessary_arguments = (
     "input_3d_filename_prototype",
     "output_filename_prototype",
     "target_frames",
-    "slitlet",
+    "srcalias",
 )
