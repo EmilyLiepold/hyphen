@@ -2,6 +2,7 @@ from tqdm import tqdm
 from joblib import Parallel
 from scipy.stats import sigmaclip
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def wigglebar(*args, **kwargs):
@@ -44,6 +45,8 @@ class ProgressParallel(Parallel):
 def get_ybounds(yrange, spectrum):
     out_yrange = [y for y in yrange]
     clipped_spectrum = sigmaclip(spectrum[np.isfinite(spectrum)])
-    out_yrange[0] = min(yrange[0], clipped_spectrum[1]) - np.finfo(np.float64).eps
-    out_yrange[1] = max(yrange[1], clipped_spectrum[2]) + np.finfo(np.float64).eps
+
+    out_yrange[0] = min(yrange[0], np.float64(clipped_spectrum[1])) - np.finfo(np.float64).eps
+    out_yrange[1] = max(yrange[1], np.float64(clipped_spectrum[2])) + np.finfo(np.float64).eps
+
     return out_yrange

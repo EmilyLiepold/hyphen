@@ -436,15 +436,6 @@ def dewiggle_lambda_space(
     normalization = np.polyval(continuum_model, lam)
     good_indices = np.isfinite(target_spectrum)
 
-    # print(target_spectrum.shape)
-
-    # print(target_spectrum)
-
-    # print(good_indices)
-
-    # print(target_spectrum[good_indices])
-
-    # exit()
     logger.debug(
         f"The continuum model polynomial parameters are {continuum_model}",
     )
@@ -622,12 +613,15 @@ def dewiggle_lambda_space(
             beta_order=fit_params["beta_order"],
             gamma_order=fit_params["gamma_order"],
         )
-    except Exception:
+    except Exception as e:
+
+        logger.warning("Initial fit failed, reverting to default parameters")
+        logger.warning(f" Exception: {e}")
 
         fit_params["alpha_order"] = 0
-        fit_params["beta_order"] = 3
+        fit_params["beta_order"] = 1
         fit_params["gamma_order"] = 0
-        fit_params["order"] = 3
+        fit_params["order"] = 1
 
         ww, ww0, jwm, bounds = build_wiggly_model(
             envelope,

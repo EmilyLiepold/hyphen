@@ -17,6 +17,10 @@ from joblib import delayed
 import dill as d
 from typing import Callable, Optional
 from functools import partial
+import warnings
+
+warnings.filterwarnings("error", message="Mean of empty slice")
+warnings.filterwarnings("error", message="invalid value encountered in scalar divide")
 
 from .tracer_helpers import find_bars, infer_fractional_position
 from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
@@ -443,12 +447,19 @@ def determine_reference_spectrum(
         (spaxel_distance <= outer_radius) * (spaxel_distance >= inner_radius)
     )
 
-    reference_spectrum = np.nanmean(
-        cube_for_computing_reference_spectrum[
-            :, reference_spectrum_indices[1], reference_spectrum_indices[0]
-        ],
-        axis=-1,
-    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always", RuntimeWarning)
+        reference_spectrum = np.nanmean(
+            cube_for_computing_reference_spectrum[
+                :, reference_spectrum_indices[1], reference_spectrum_indices[0]
+            ],
+            axis=-1,
+        )
+
+        for warning in w:
+            if "Mean of empty slice" in str(warning.message):
+                logger.warning(f"The reference spectrum region includes some empty spaxels")
+
 
     # print(f'{reference_spectrum.shape=}')
 
@@ -533,20 +544,25 @@ def determine_spatial_arr(axis_pixel, axis_slice):
     return spatial_arr
 
 
-def determine_image(frame_3d, frame_index = 1, collapse_axis=0):
+def determine_image(frame_3d, frame_index=1, collapse_axis=0):
 
     # We want to plot quick diagnostics of the spectrally collapsed image
     # We'll make a median image
 
-    median_image = np.nanmedian(frame_3d[frame_index].data, axis=collapse_axis)
-    median_image = np.nanmedian(frame_3d[frame_index].data, axis=collapse_axis)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always", RuntimeWarning)
+        median_image = np.nanmedian(frame_3d[frame_index].data, axis=collapse_axis)
+        for warning in w:
+            if "All-NaN slice encountered" in str(warning.message):
+                logger.warning(f"{sum(np.isnan(median_image))} of {median_image.size} pixels in the images are all NaN")
+
     if median_image.ndim == 1:
         median_image = np.atleast_2d(median_image)
 
     return median_image
 
 
-def determine_spaxel_distances(spatial_arr, target_pixel, conversion_factor = 3600):
+def determine_spaxel_distances(spatial_arr, target_pixel, conversion_factor=3600):
 
     spaxel_distance = conversion_factor * np.sqrt(
         (spatial_arr[0, :, :] - spatial_arr[0, target_pixel[1], target_pixel[0]]) ** 2
@@ -1575,8 +1591,6 @@ def dewiggler_stack_ifu(
     target_wiggle_pixels = [[t - 1 for t in tp][::-1] for tp in target_wiggle_pixels]
 
     spaxel_distance = determine_spaxel_distances(spatial_arr, target_pixel, conversion_factor = 3600)
-
-
     
     build_image_map_ifu(
         plot,
@@ -1890,8 +1904,11 @@ def dewiggler_stack_ifu(
                     (fft_freq[:] <= 1 + fft_order_width)
                 )
 
-                p1 = np.mean(np.abs(x[4]['residual_fft'][p1_indices]))
-                pavg = np.mean(np.abs(x[4]['residual_fft']))
+                if sum(p1_indices) == 0:
+                    p1_indices[np.argmin(np.abs(fft_freq - 1.0))] = True
+
+                p1 = np.nanmean(np.abs(x[4]['residual_fft'][p1_indices]))
+                pavg = np.nanmean(np.abs(x[4]['residual_fft']))
                 logger.info('')
 
                 if p1 / pavg > power_ratio_threshold:
@@ -2391,8 +2408,11 @@ def dewiggler_stack_msa(
                     (fft_freq[:] <= 1 + fft_order_width)
                 )
 
-                p1 = np.mean(np.abs(x[4]['residual_fft'][p1_indices]))
-                pavg = np.mean(np.abs(x[4]['residual_fft']))
+                if sum(p1_indices) == 0:
+                    p1_indices[np.argmin(np.abs(fft_freq - 1.0))] = True
+
+                p1 = np.nanmean(np.abs(x[4]['residual_fft'][p1_indices]))
+                pavg = np.nanmean(np.abs(x[4]['residual_fft']))
                 logger.info('')
 
                 if p1 / pavg > power_ratio_threshold:
