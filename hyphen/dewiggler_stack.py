@@ -2484,9 +2484,10 @@ def parse_yaml_arguments_and_dewiggle_ifu(getter):
     target_detectors = getter("target_detectors")
     target_frames = getter("target_frames")
 
-    assert target_frames is not [
-        ""
-    ], "No target frames specified and I don't yet know how to handle that..."
+    if not target_frames or target_frames == [""]:
+        raise ValueError(
+            "No target frames specified and I don't yet know how to handle that..."
+        )
 
     log_filename_prototype = (
         output_filename_prototype.replace(".gz", "").replace(".fits", "") + ".log"
