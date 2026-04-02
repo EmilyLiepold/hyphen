@@ -28,6 +28,9 @@ def identify_chip_gap(
     gaps = []
     in_gap = False
 
+    if np.all(np.isnan(weight)):
+        raise ValueError("Weight array is all NaN; cannot identify chip gap")
+
     median_weight = np.nanmedian(weight)
 
     good_weight = ~(
@@ -276,9 +279,21 @@ def build_big_spectra_figure(
 
     for j in wigglebar(range(number_to_plot)):
 
-        norm_val = np.nanmedian(spectra[j])
-        normed_flux = spectra[j] / norm_val
-        normed_flux[normed_flux[:] == 0] = np.nan
+        # Normalize by the median of positive values. If there are no positive
+        # values, avoid calling nanmedian on an empty slice (which issues a
+        # RuntimeWarning). Check first and produce an all-NaN normalized flux
+        # for the degenerate case.
+        pos_vals = spectra[j][spectra[j] > 0]
+        if pos_vals.size == 0:
+            norm_val = np.nan
+        else:
+            norm_val = np.nanmedian(pos_vals)
+
+        if not np.isfinite(norm_val) or norm_val == 0:
+            normed_flux = np.full_like(spectra[j], np.nan)
+        else:
+            normed_flux = spectra[j] / norm_val
+        normed_flux[normed_flux == 0] = np.nan
 
         axes.plot(lam, normed_flux - offset * j, c="k")
         axes.text(
@@ -423,8 +438,16 @@ def frame_merge(
 
         # Now, we want to find the minimum and maximum valid gap starting index
         # across the N frames
-        min_gap_edge = np.nanmin(gap_edges[0, ...], axis=0).astype(int)
-        max_gap_edge = np.nanmax(gap_edges[1, ...], axis=0).astype(int)
+        # Avoid calling np.nanmin/np.nanmax on all-NaN slices (which emits warnings).
+        # Instead replace NaNs with +/-inf and use np.min/np.max which don't warn,
+        # then map the +/-inf back to 0 as a safe no-op index.
+        temp_min = np.where(np.isnan(gap_edges[0, ...]), np.inf, gap_edges[0, ...])
+        min_gap_edge = np.min(temp_min, axis=0)
+        min_gap_edge = np.where(np.isinf(min_gap_edge), 0, min_gap_edge).astype(int)
+
+        temp_max = np.where(np.isnan(gap_edges[1, ...]), -np.inf, gap_edges[1, ...])
+        max_gap_edge = np.max(temp_max, axis=0)
+        max_gap_edge = np.where(np.isneginf(max_gap_edge), 0, max_gap_edge).astype(int)
 
         if pdf is not None:
 
