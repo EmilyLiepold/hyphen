@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.spatial import ConvexHull
 from astropy.wcs import WCS
-from astropy.coordinates import SkyCoord, SpectralCoord
+from astropy.coordinates import SkyCoord
 from astropy import units as u
 from stdatamodels.jwst.datamodels import ImageModel
 from stdatamodels.jwst.datamodels import MultiSlitModel
