@@ -2736,8 +2736,6 @@ def parse_yaml_arguments_and_batch_dewiggle_msa(getter):
     # 3. output_filename_prototype will be modified similar to input_3d_filename
     # 4. plot_filename_prototype similar.
 
-    input_3d_prototype = getter("input_3d_filename_prototype")
-
     srcalias = getter("srcalias")
 
     output_filename_prototypes = [
