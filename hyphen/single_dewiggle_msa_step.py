@@ -1,11 +1,11 @@
-batch_dewiggle_default_options = {
+single_dewiggle_msa_default_options = {
     "input_2d_filename_prototype": None,
     "input_3d_filename_prototype": None,
     "output_filename_prototype": None,
     "target_detectors": ["nrs1", "nrs2"],
     "target_frames": [""],
     "plot_filename_prototype": False,
-    "central_pixel": [-1, -1],
+    "central_pixel": -1,
     "dewiggling_radius": 0.5,
     "central_reference_spectrum_radius": 0.2,
     "smooth_model_poly_order": 5,
@@ -16,7 +16,6 @@ batch_dewiggle_default_options = {
     "n_jobs": 1,
     "perform_dewiggling": True,
     "target_radec": (0.0, 0.0),
-    "use_cached_wcs": True,
     "target_wiggly_pixels": [],
     "mask_bad_fits": True,
     "slices_to_use": [0, -1, 1],
@@ -37,11 +36,11 @@ batch_dewiggle_default_options = {
     "masked_regions": [],
 }
 
-batch_dewiggle_necessary_arguments = (
+single_dewiggle_msa_necessary_arguments = (
     "label",
     "input_2d_filename_prototype",
     "input_3d_filename_prototype",
     "output_filename_prototype",
     "target_frames",
-    "central_pixel",
+    "srcalias"
 )

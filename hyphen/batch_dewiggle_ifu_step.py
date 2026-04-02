@@ -1,4 +1,4 @@
-single_dewiggle_default_options = {
+batch_dewiggle_ifu_default_options = {
     "input_2d_filename_prototype": None,
     "input_3d_filename_prototype": None,
     "output_filename_prototype": None,
@@ -37,10 +37,11 @@ single_dewiggle_default_options = {
     "masked_regions": [],
 }
 
-single_dewiggle_necessary_arguments = (
+batch_dewiggle_ifu_necessary_arguments = (
     "label",
     "input_2d_filename_prototype",
     "input_3d_filename_prototype",
     "output_filename_prototype",
     "target_frames",
+    "central_pixel",
 )
