@@ -2,7 +2,6 @@ from tqdm import tqdm
 from joblib import Parallel
 from scipy.stats import sigmaclip
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 def wigglebar(*args, **kwargs):
