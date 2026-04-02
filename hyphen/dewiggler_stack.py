@@ -2246,7 +2246,7 @@ def dewiggler_stack_msa(
         if len(masked_regions) > 0:
             logger.debug("Applying masked regions")
             for m in masked_regions:
-                logger.info("Applying mask {m[0]}-{m[1]}")
+                logger.info(f"Applying mask {m[0]}-{m[1]}")
                 explicit_mask[
                     (axis_spectral >= m[0]) & (axis_spectral <= m[1])
                 ] = 0
