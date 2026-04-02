@@ -2168,7 +2168,7 @@ def dewiggler_stack_msa(
         )
     )
 
-    if np.nan in pf_back:
+    if np.any(np.isnan(pf_back)):
         pf_back = np.zeros_like(pf_back)
         smoothed_background_reference_spectrum = np.zeros_like(
             smoothed_background_reference_spectrum
