@@ -16,7 +16,6 @@ single_dewiggle_msa_default_options = {
     "n_jobs": 1,
     "perform_dewiggling": True,
     "target_radec": (0.0, 0.0),
-    "use_cached_wcs": True,
     "target_wiggly_pixels": [],
     "mask_bad_fits": True,
     "slices_to_use": [0, -1, 1],
