@@ -2431,7 +2431,7 @@ def dewiggler_stack_msa(
 
                 if retry_allowed:
                     try:
-                        frame_3d[1].data[:, target_index[0], target_index[1]] = \
+                        frame_3d[8 * slitlet_3d + 1].data[target_index[1], :] = \
                             preferred_dewiggled_spectrum
                         x = dewiggle_main_loop(xindex)
                     except Exception as e:
