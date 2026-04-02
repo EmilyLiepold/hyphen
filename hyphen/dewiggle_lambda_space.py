@@ -6,7 +6,6 @@ from numpy.fft import fft
 from scipy.optimize import curve_fit
 from typing import Callable
 from functools import partial
-from .helpers import get_ybounds
 logger = logging.getLogger(__name__)
 
 
