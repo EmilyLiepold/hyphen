@@ -1469,32 +1469,28 @@ def get_2d_trace_model(wcs_2d: WCS,
 
     lams = np.linspace(min_lam, max_lam, 10)
 
-    # we're going to try to approximate the spectra using an order 6 polynomial
-    trace_samples: list[tuple[np.typing.NDArray[np.float64], ...]] = []
-    for tindex in range(len(world_vals[0])):
-        if len(trace_samples) >= n_target_traces:
-            break
-        ra = world_vals[0][tindex]
-        dec = world_vals[1][tindex]
-        trace = wcs_2d.world_to_pixel_values(ra * np.ones_like(lams), dec * np.ones_like(lams), lams)
+    valid_sky_mask = (np.isfinite(world_vals[0]) & np.isfinite(world_vals[1]) & finite_lam_mask)
+    valid_ra  = world_vals[0][valid_sky_mask][:n_target_traces]
+    valid_dec = world_vals[1][valid_sky_mask][:n_target_traces]
+    n_traces = len(valid_ra)
 
-        trace_samples.append(trace)
+    ra_batch  = np.repeat(valid_ra, len(lams))
+    dec_batch = np.repeat(valid_dec, len(lams))
+    lam_batch = np.tile(lams, n_traces)
 
-    trace_library = np.asarray(trace_samples)
+    xy_flat = wcs_2d.world_to_pixel_values(ra_batch, dec_batch, lam_batch)
+    trace_library = np.asarray(xy_flat).T.reshape(n_traces, len(lams), 2)
 
-    source_sky_coords = SkyCoord(ra=world_vals[0][:len(trace_library)] * u.deg, dec=world_vals[1][:len(trace_library)] * u.deg, frame='icrs')
+    source_sky_coords = SkyCoord(ra=valid_ra * u.deg, dec=valid_dec * u.deg, frame='icrs')
 
     def trace_factory(ra, dec):
-        # first, we want to identify the index in our trace library which is closest to the input ra and dec
-
         input_coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame='icrs')
         separations = input_coord.separation(source_sky_coords)
         closest_index = np.argmin(separations)
         closest_trace = trace_library[closest_index]
 
-        # now do a 6th order polyfit for that trace for both the x and y as a function of lambda
-        pf_x = np.polyfit(lams, closest_trace[0], 6)
-        pf_y = np.polyfit(lams, closest_trace[1], 6)
+        pf_x = np.polyfit(lams, closest_trace[:, 0], 6)
+        pf_y = np.polyfit(lams, closest_trace[:, 1], 6)
 
         # Now we want to build a function which takes in a wavelenghth array and returns the x for the trace at those wavelengths and a function which does the same for y.
 
