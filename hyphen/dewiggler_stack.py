@@ -71,7 +71,7 @@ def get_wcs_ifu(
     Get the wcs for the 2D and 3D frames.
 
     :param fn_2d: This is the filename for the 2D detector-frame fits file
-    :param frame_3d: This is the fits object for the 3D detector-frame fits file.
+    :param fn_3d: This is the filename for the 3D rectified fits file
     :return: A tuple containing the single global WCS for the 2D frame, the WCS for
         the 3D frame, and the IFUImageModel (must be kept alive by the caller so the
         underlying ASDF file handle is not garbage-collected).
@@ -83,8 +83,6 @@ def get_wcs_ifu(
     logger.info("Computing WCS for the 3D frame")
     cube_model = datamodels.open(fn_3d)
     frame_3d_wcs = cube_model.meta.wcs
-
-
 
     return frame_2d_wcs, frame_3d_wcs, ifu_model, cube_model
 
@@ -164,40 +162,6 @@ def get_trace_model(
         return generic_trace(x)[0, :]
 
     return trace_x, trace_y
-
-def get_trace_model_ifu(
-    detector_wcs: WCS, ra: float, dec: float, mapped_wcs_coord: str = 'detector',
-) -> tuple[
-    Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]],
-    Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]
-]:
-    """
-    Get the trace model for a given ra and dec
-
-    :param detector_wcs: The WCS for the detector-frame exposure
-    :param ra: The RA in degrees to use for the spectral trace
-    :param dec: The DEC in degrees to use for the spectral trace
-    :return:
-    """
-
-    def generic_trace(
-        x: np.typing.NDArray[np.float64]
-    ) -> np.typing.NDArray[np.float64]:
-        x0 = x * 1e-6
-        p = np.atleast_2d(detector_wcs.world_to_pixel_values(ra, dec, x0))
-        print(ra, dec, x0)
-        print(p)
-        return p
-
-    def trace_x(x: np.typing.NDArray[np.float64]) -> np.typing.NDArray[np.float64]:
-        return generic_trace(x)[1, :]
-
-    def trace_y(x: np.typing.NDArray[np.float64]) -> np.typing.NDArray[np.float64]:
-        return generic_trace(x)[0, :]
-
-    return trace_x, trace_y
-
-
 
 def get_principal_axes_ifu(
     frame_3d: HDUList
@@ -1136,7 +1100,7 @@ def build_spaxel_map_plot_ifu(
         axes[tindex + 1].set_ylabel("x pixel")
         axes[tindex + 1].set_xlabel("y pixel")
 
-        xlim = (0, image_for_map.shape[0])
+        xlim = (0, image_for_map.shape[1])
         
         ylim = (
             np.nanmin(trace_models[tindex][0](axis_spectral)) - 15,
@@ -1487,15 +1451,21 @@ def get_2d_trace_model(wcs_2d: WCS,
     ds = im_2d.data.shape
 
     target_indices = [np.random.randint(0, s, size=n_target_traces * 10) for s in ds]
-    mask_2d = ~np.isnan(im_2d.data[*target_indices[::-1]])
+    mask_2d = ~np.isnan(im_2d.data[tuple(target_indices[::-1])])
 
     target_indices = [s[mask_2d] for s in target_indices]
 
     # Now we want to do the forward pass for these indices to identify many valid RA, Dec
     world_vals = wcs_2d.pixel_to_world_values(*target_indices)
+
+    world_lams = np.asarray(world_vals[2])
+    finite_lam_mask = np.isfinite(world_lams)
+    if not np.any(finite_lam_mask):
+        raise ValueError("WCS returned no finite wavelength values in the forward WCS pass.")
     
-    min_lam = np.min(world_vals[2])
-    max_lam = np.max(world_vals[2])
+    finite_lams = world_lams[finite_lam_mask]
+    min_lam = np.min(finite_lams)
+    max_lam = np.max(finite_lams)
 
     lams = np.linspace(min_lam, max_lam, 10)
 

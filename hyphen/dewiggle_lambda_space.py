@@ -944,13 +944,11 @@ def dewiggle_lambda_space(
         lambda_space_xlim = (np.min(lam[good_indices]), np.max(lam[good_indices]))
         x_space_xlim = (np.max(x_vals), np.min(x_vals))
 
-        print(f"Lambda space xlim: {lambda_space_xlim}")
-
         axes.set_xlim(lambda_space_xlim)
 
         axes2[0].set_xlim(x_space_xlim)
         axes2[1].set_xlim(x_space_xlim)
-        print(f"X space xlim: {x_space_xlim}")
+
         xlim = axes2[0].get_xlim()
         low_x = int(np.floor(xlim[0]))
         high_x = int(np.ceil(xlim[1]))
