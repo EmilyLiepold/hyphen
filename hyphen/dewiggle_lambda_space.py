@@ -605,6 +605,7 @@ def dewiggle_lambda_space(
 
     improving = True
 
+    successful_fit_parameters = False
     try:
         xsol, _, x2, reduced_x2, ww, jwm = fit_wrapper(
             order=fit_params["order"],
@@ -612,15 +613,14 @@ def dewiggle_lambda_space(
             beta_order=fit_params["beta_order"],
             gamma_order=fit_params["gamma_order"],
         )
+        successful_fit_parameters = True
+
     except Exception as e:
 
         logger.warning("Initial fit failed, reverting to default parameters")
         logger.warning(f" Exception: {e}")
 
-        fit_params["alpha_order"] = 0
-        fit_params["beta_order"] = 1
-        fit_params["gamma_order"] = 0
-        fit_params["order"] = 1
+        fit_params = min_fit_params.copy()
 
         ww, ww0, jwm, bounds = build_wiggly_model(
             envelope,
@@ -631,6 +631,8 @@ def dewiggle_lambda_space(
         xsol[1] = 1
         reduced_x2 = 1e15
         x2 = 1e15
+        successful_fit_parameters = False
+
 
     while improving:
 
@@ -661,6 +663,9 @@ def dewiggle_lambda_space(
                     f"{proposed_fit_params['gamma_order']})"
                 )
                 try:
+                    
+                    prior_fit_sol = xsol.copy() if successful_fit_parameters else None
+
                     (
                         prop_xsol,
                         _,
@@ -673,7 +678,7 @@ def dewiggle_lambda_space(
                         alpha_order=proposed_fit_params["alpha_order"],
                         beta_order=proposed_fit_params["beta_order"],
                         gamma_order=proposed_fit_params["gamma_order"],
-                        prior_fit_sol=xsol,
+                        prior_fit_sol=prior_fit_sol,
                         prior_order=fit_params["order"],
                         prior_alpha_order=fit_params["alpha_order"],
                         prior_beta_order=fit_params["beta_order"],
@@ -701,6 +706,7 @@ def dewiggle_lambda_space(
                             f"{fit_params['gamma_order']})"
                         )
                         improving = True
+                        successful_fit_parameters = True
                         break
 
                 except Exception as e:
