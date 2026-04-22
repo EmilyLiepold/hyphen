@@ -1487,7 +1487,7 @@ def get_2d_trace_model(wcs_2d: WCS,
     ds = im_2d.data.shape
 
     target_indices = [np.random.randint(0, s, size=n_target_traces * 10) for s in ds]
-    mask_2d = ~np.isnan(im_2d.data[*target_indices[::-1]])
+    mask_2d = ~np.isnan(im_2d.data[tuple(target_indices[::-1])])
 
     target_indices = [s[mask_2d] for s in target_indices]
 
