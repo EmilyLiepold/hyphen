@@ -248,6 +248,26 @@ def convert_wiggle_solution(
                       + wiggle_args)
 
 
+def _legendre_basis(t: np.ndarray, n_terms: int) -> np.ndarray:
+    """
+    Build the Legendre polynomial basis via three-term recurrence.
+
+    :param t: Normalized coordinate array in [-1, 1].
+    :param n_terms: Number of basis functions (P_0 through P_{n_terms-1}).
+    :return: Array of shape (n_terms, len(t)) where row k is P_k(t).
+    """
+    basis = np.empty((n_terms, len(t)), dtype=float)
+    if n_terms == 0:
+        return basis
+    basis[0] = 1.0
+    if n_terms == 1:
+        return basis
+    basis[1] = t
+    for k in range(1, n_terms - 1):
+        basis[k + 1] = ((2 * k + 1) * t * basis[k] - k * basis[k - 1]) / (k + 1)
+    return basis
+
+
 def build_wiggly_model(
     envelope_prototype: Callable[
         [np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]
@@ -258,6 +278,8 @@ def build_wiggly_model(
     fit_orders: dict[str, int],
     prior_fit_sol: np.typing.NDArray[np.float64] | None = None,
     prior_fit_orders: dict[str, int] | None = None,
+    x_min: float | None = None,
+    x_max: float | None = None,
 ):
 
     alpha_order = fit_orders["alpha_order"]
@@ -265,67 +287,148 @@ def build_wiggly_model(
     gamma_order = fit_orders["gamma_order"]
     order = fit_orders["order"]
 
+    cP_idx = alpha_order + beta_order + gamma_order + 3
+    cG_idx = alpha_order + beta_order + gamma_order + 4
+    f_idx  = alpha_order + beta_order + gamma_order + 5
+    ab_start = alpha_order + beta_order + gamma_order + 6
+
+    _leg_cache: list = [None, None]
+
+    def _eval_components(x, args):
+        cache_key = (len(x), float(x[0]), float(x[-1]), args.tobytes())
+        if _leg_cache[0] == cache_key:
+            return _leg_cache[1]
+
+        _x_min = x_min if x_min is not None else float(np.min(x))
+        _x_max = x_max if x_max is not None else float(np.max(x))
+        t = 2.0 * (x - _x_min) / (_x_max - _x_min) - 1.0
+
+        ba = _legendre_basis(t, alpha_order + 1)
+        bg_leg = _legendre_basis(t, gamma_order + 1)
+        bb = _legendre_basis(t, beta_order + 1)
+
+        alpha_coeffs = args[0: alpha_order + 1]
+        alpha_coeffs_mod = np.concatenate([[1.0], alpha_coeffs[1:]])
+        alpha = alpha_coeffs[0] * (ba * alpha_coeffs_mod[:, None]).sum(axis=0)
+
+        gamma_coeffs = args[alpha_order + 1: alpha_order + gamma_order + 2]
+        gamma_coeffs_mod = np.concatenate([[1.0], gamma_coeffs[1:]])
+        gamma = gamma_coeffs[0] * (bg_leg * gamma_coeffs_mod[:, None]).sum(axis=0)
+
+        beta_coeffs = args[alpha_order + gamma_order + 2: alpha_order + beta_order + gamma_order + 3]
+        beta_coeffs_mod = np.concatenate([[1.0], beta_coeffs[1:]])
+        beta_env = beta_coeffs[0] * (bb * beta_coeffs_mod[:, None]).sum(axis=0)
+
+        cP = float(args[cP_idx])
+        cG = float(args[cG_idx])
+        f  = float(args[f_idx])
+
+        sin_basis = np.empty((order, len(x)))
+        cos_basis = np.empty((order, len(x)))
+        dsin_basis = np.empty((order, len(x)))
+        dcos_basis = np.empty((order, len(x)))
+        for j in range(order):
+            freq_j = 2.0 * np.pi * (j + 1) * f
+            phase_j = freq_j * x
+            sin_basis[j] = np.sin(phase_j)
+            cos_basis[j] = np.cos(phase_j)
+            dsin_basis[j] = 2.0 * np.pi * (j + 1) * x * np.cos(phase_j)
+            dcos_basis[j] = -2.0 * np.pi * (j + 1) * x * np.sin(phase_j)
+
+        ab_coeffs = args[ab_start: ab_start + 2 * order]
+        a_coeffs = ab_coeffs[0::2]
+        b_coeffs = ab_coeffs[1::2]
+
+        sin_sum = (a_coeffs[:, None] * sin_basis + b_coeffs[:, None] * cos_basis).sum(axis=0)
+        dsin_sum_df = (a_coeffs[:, None] * dsin_basis + b_coeffs[:, None] * dcos_basis).sum(axis=0)
+
+        jwm_val = beta_env * sin_sum
+        bg = background_prototype(x)
+
+        result = {
+            't': t, 'ba': ba, 'bg_leg': bg_leg, 'bb': bb,
+            'alpha': alpha, 'gamma': gamma, 'beta_env': beta_env,
+            'cP': cP, 'cG': cG, 'f': f,
+            'sin_basis': sin_basis, 'cos_basis': cos_basis,
+            'dsin_basis': dsin_basis, 'dcos_basis': dcos_basis,
+            'sin_sum': sin_sum, 'dsin_sum_df': dsin_sum_df,
+            'jwm_val': jwm_val, 'bg': bg,
+        }
+        _leg_cache[0] = cache_key
+        _leg_cache[1] = result
+        return result
+
     def wm(x, *args):
-        # The list of args are:
-        # args[0:alpha_order + 1] are the alpha_order + 1 coefficients which
-        #   define the envelope for the PS continuum
-        # args[alpha_order + 1: alpha_order + gamma_order + 2] are the
-        #   gamma_order + 1 coefficients which define the envelope for the
-        #   background
-        # args[alpha_order + gamma_order + 2: alpha_order + beta_order +
-        #   gamma_order + 3] are the beta_order + 1 coefficients which define
-        #   the envelope for the wiggle
-        # args[alpha_order + beta_order + gamma_order + 3] is the c_P coupling
-        #   parameter between the wiggle and the PS continuum
-        # args[alpha_order + beta_order + gamma_order + 4] is the c_G coupling
-        #   parameter between the wiggle and the background continuum
-        # args[alpha_order + beta_order + gamma_order + 5] is the f parameter
-        #   which defines the frequency of the wiggle
-        # args[alpha_order + beta_order + gamma_order + 6:alpha_order +
-        #   beta_order + gamma_order + 6 + 2 * order - 1] are the
-        #   2 * order - 1 parameters which define the wiggle model.
-        #   The amplitude for the first order is fixed to 1.
+        c = _eval_components(x, np.asarray(args))
+        return (c['alpha'] * (1.0 + c['cP'] * c['jwm_val'])
+                + c['gamma'] * c['bg'] * (1.0 + c['cG'] * c['jwm_val']))
 
-        jwm = build_wiggle_term(
-            envelope_prototype,
-            *parse_wiggle_args(args, fit_orders),
-        )
+    def wm_jac(x, *args):
+        c = _eval_components(x, np.asarray(args))
+        alpha    = c['alpha']
+        gamma    = c['gamma']
+        beta_env = c['beta_env']
+        cP       = c['cP']
+        cG       = c['cG']
+        jwm_val  = c['jwm_val']
+        sin_sum  = c['sin_sum']
+        bg       = c['bg']
+        ba       = c['ba']
+        bg_leg   = c['bg_leg']
+        bb       = c['bb']
+        sin_basis  = c['sin_basis']
+        cos_basis  = c['cos_basis']
+        dsin_sum_df = c['dsin_sum_df']
 
-        alpha = envelope_prototype(x, *args[0: alpha_order + 1])
-        gamma = envelope_prototype(
-            x, *args[alpha_order + 1: alpha_order + gamma_order + 2]
-        )
+        n = len(x)
+        n_params = (alpha_order + 1) + (gamma_order + 1) + (beta_order + 1) + 3 + 2 * order
+        J = np.empty((n, n_params), dtype=float)
 
-        return alpha * (
-            1
-            + args[alpha_order + beta_order + gamma_order + 3]
-            * jwm(x, envelope_only=False)
-        ) + gamma * background_prototype(x) * (
-            1
-            + args[alpha_order + beta_order + gamma_order + 4]
-            * jwm(x, envelope_only=False)
-        )
+        col = 0
+
+        alpha0 = alpha / (ba[0] if alpha_order == 0 else 1.0)
+        for k in range(alpha_order + 1):
+            if k == 0:
+                J[:, col] = ba[0] * (1.0 + cP * jwm_val)
+            else:
+                J[:, col] = alpha * ba[k] * (1.0 + cP * jwm_val)
+            col += 1
+
+        gamma0 = gamma / (bg_leg[0] if gamma_order == 0 else 1.0)
+        for k in range(gamma_order + 1):
+            if k == 0:
+                J[:, col] = bg_leg[0] * bg * (1.0 + cG * jwm_val)
+            else:
+                J[:, col] = gamma * bg_leg[k] * bg * (1.0 + cG * jwm_val)
+            col += 1
+
+        amp_factor = alpha * cP + gamma * bg * cG
+        beta0 = beta_env / (bb[0] if beta_order == 0 else 1.0)
+        for k in range(beta_order + 1):
+            if k == 0:
+                J[:, col] = amp_factor * bb[0] * sin_sum
+            else:
+                J[:, col] = amp_factor * beta_env * bb[k] * sin_sum
+            col += 1
+
+        J[:, col] = alpha * jwm_val
+        col += 1
+
+        J[:, col] = gamma * bg * jwm_val
+        col += 1
+
+        J[:, col] = amp_factor * beta_env * dsin_sum_df
+        col += 1
+
+        for j in range(order):
+            J[:, col]     = amp_factor * beta_env * sin_basis[j]
+            J[:, col + 1] = amp_factor * beta_env * cos_basis[j]
+            col += 2
+
+        return J
 
     def wwm(x, envelope_only, *args):
-        # The list of args are:
-        # args[0:alpha_order + 1] are the alpha_order + 1 coefficients which define the
-        # envelope for the PS continuum
-        # args[alpha_order + 1: alpha_order + gamma_order + 2] are the gamma_order + 1
-        # coefficients which define the envelope for the background
-        # args[alpha_order + gamma_order + 2: alpha_order + beta_order + gamma_order +
-        # 3] are the beta_order + 1 coefficients which define the envelope for the
-        # wiggle
-        # args[alpha_order + beta_order + gamma_order + 3] is the c_P coupling
-        # parameter between the wiggle and the PS continuum
-        # args[alpha_order + beta_order + gamma_order + 4] is the c_G coupling
-        # parameter between the wiggle and the background continuum
-        # args[alpha_order + beta_order + gamma_order + 5] is the f parameter which
-        # defines the frequency of the wiggle
-        # args[alpha_order + beta_order + gamma_order + 6:alpha_order + beta_order +
-        # gamma_order + 6 + 2 * order - 1] are the 2 * order - 1 parameters which
-        # define the wiggle model. The amplitude for the first order is fixed to 1.
-
-        jwm = build_wiggle_term(
+        jwm_inner = build_wiggle_term(
             envelope_prototype,
             *parse_wiggle_args(args, fit_orders),
         )
@@ -336,55 +439,46 @@ def build_wiggly_model(
         )
 
         return alpha * (
-            args[alpha_order + beta_order + gamma_order + 3]
-            * jwm(x, envelope_only=envelope_only)
+            args[cP_idx]
+            * jwm_inner(x, envelope_only=envelope_only)
         ) + gamma * background_prototype(x) * (
-            args[alpha_order + beta_order + gamma_order + 4]
-            * jwm(x, envelope_only=envelope_only)
+            args[cG_idx]
+            * jwm_inner(x, envelope_only=envelope_only)
         )
 
     bounds = []
     initial_guess = []
 
-    # alpha
     bounds.append([0.0, 2.0])
     initial_guess.append(0.5)
     for j in range(alpha_order):
         bounds.append([-1.0, 1.0])
         initial_guess.append(0.0)
 
-    # gamma
     bounds.append([0.0, 2.0])
     initial_guess.append(0.5)
     for j in range(gamma_order):
         bounds.append([-1.0, 1.0])
         initial_guess.append(0.0)
 
-    # beta
     bounds.append([1.0 - 1e-10, 1.0 + 1e-10])
     initial_guess.append(1.0)
     for j in range(beta_order):
         bounds.append([-0.5, 0.5])
         initial_guess.append(0.0)
 
-    # cP
     bounds.append([1.0 - 1e-10, 1.0 + 1e-10])
     initial_guess.append(1.0)
 
-    # cG
     bounds.append([-1e-10, 1e-10])
     initial_guess.append(0.0)
 
-    # f
     bounds.append([0.99, 1.01])
     initial_guess.append(1.0)
 
     for j in range(order):
-        # a_j
         bounds.append([-1.0, 1.0])
         initial_guess.append(0.0)
-
-        # b_j
         bounds.append([-1.0, 1.0])
         initial_guess.append(0.0)
 
@@ -409,6 +503,7 @@ def build_wiggly_model(
         initial_guess,
         get_wwm,
         bounds,
+        wm_jac,
     )
 
 
@@ -531,11 +626,15 @@ def dewiggle_lambda_space(
 
     fit_params = min_fit_params.copy()
 
-    # Build a baseline model with the minimum fit parameters
-    ww, ww0, jwm, bounds = build_wiggly_model(
+    _x_min = float(np.min(x_vals))
+    _x_max = float(np.max(x_vals))
+
+    ww, ww0, jwm, bounds, wm_jac = build_wiggly_model(
         envelope,
         background_prototype,
         fit_orders=fit_params,
+        x_min=_x_min,
+        x_max=_x_max,
     )
     xsol = [0] * len(ww0)
     xsol[1] = 1
@@ -558,7 +657,7 @@ def dewiggle_lambda_space(
         #     f"Performing fit with (O, 𝛼, 𝛽, 𝛾) = ({order}, {alpha_order},
         # {beta_order}, {gamma_order})"
         # )
-        ww, ww0, jwm, bounds = build_wiggly_model(
+        ww, ww0, jwm, bounds, wm_jac = build_wiggly_model(
             envelope,
             background_prototype,
             fit_orders={
@@ -574,14 +673,10 @@ def dewiggle_lambda_space(
                 "gamma_order": prior_gamma_order,
                 "order": prior_order,
             },
+            x_min=_x_min,
+            x_max=_x_max,
         )
 
-        # logger.info(f'Initiated wiggle model with
-        # order = {order}, alpha = {alpha_order}, beta = {beta_order},
-        # gamma = {gamma_order}')
-        # print(
-        #     f"Failed to fit with order = {current_order}, alpha_order = {alpha_order},
-        #  beta_order = {beta_order}, gamma_order = {gamma_order}")
         xsol, xcov = curve_fit(
             ww,
             x_vals,
@@ -589,6 +684,11 @@ def dewiggle_lambda_space(
             p0=np.asarray(ww0),
             bounds=np.asarray(bounds),
             sigma=noise_for_fft,
+            jac=wm_jac,
+            method='trf',
+            ftol=1e-4,
+            xtol=1e-4,
+            gtol=1e-4,
         )
         # logger.info('Fit model with order = %d', order)
         # logger.debug(
@@ -622,10 +722,12 @@ def dewiggle_lambda_space(
 
         fit_params = min_fit_params.copy()
 
-        ww, ww0, jwm, bounds = build_wiggly_model(
+        ww, ww0, jwm, bounds, wm_jac = build_wiggly_model(
             envelope,
             background_prototype,
             fit_orders=fit_params,
+            x_min=_x_min,
+            x_max=_x_max,
         )
         xsol = [0] * len(ww0)
         xsol[1] = 1
