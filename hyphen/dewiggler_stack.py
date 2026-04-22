@@ -1100,7 +1100,7 @@ def build_spaxel_map_plot_ifu(
         axes[tindex + 1].set_ylabel("x pixel")
         axes[tindex + 1].set_xlabel("y pixel")
 
-        xlim = (0, image_for_map.shape[0])
+        xlim = (0, image_for_map.shape[1])
         
         ylim = (
             np.nanmin(trace_models[tindex][0](axis_spectral)) - 15,
