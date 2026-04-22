@@ -1834,7 +1834,7 @@ def dewiggler_stack_ifu(
         weight_based_mask = weight_based_mask.astype(bool)
 
         # find world coordinates for the target pixel
-        world_coords = frame_3d_wcs.pixel_to_world(
+        world_coords = frame_3d_wcs.pixel_to_world_values(
             target_index[1], target_index[0], 1000
         )
 
