@@ -29,7 +29,7 @@ def identify_chip_gap(
     in_gap = False
 
     if np.all(np.isnan(weight)):
-        raise ValueError("Weight array is all NaN; cannot identify chip gap")
+        return 0, len(weight) - 1
 
     median_weight = np.nanmedian(weight)
 
