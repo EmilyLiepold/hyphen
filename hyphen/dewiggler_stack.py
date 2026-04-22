@@ -71,7 +71,7 @@ def get_wcs_ifu(
     Get the wcs for the 2D and 3D frames.
 
     :param fn_2d: This is the filename for the 2D detector-frame fits file
-    :param frame_3d: This is the fits object for the 3D detector-frame fits file.
+    :param fn_3d: This is the filename for the 3D rectified fits file
     :return: A tuple containing the single global WCS for the 2D frame, the WCS for
         the 3D frame, and the IFUImageModel (must be kept alive by the caller so the
         underlying ASDF file handle is not garbage-collected).
@@ -83,8 +83,6 @@ def get_wcs_ifu(
     logger.info("Computing WCS for the 3D frame")
     cube_model = datamodels.open(fn_3d)
     frame_3d_wcs = cube_model.meta.wcs
-
-
 
     return frame_2d_wcs, frame_3d_wcs, ifu_model, cube_model
 
