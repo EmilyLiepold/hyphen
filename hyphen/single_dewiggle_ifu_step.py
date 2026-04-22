@@ -19,7 +19,7 @@ single_dewiggle_ifu_default_options = {
     "use_cached_wcs": True,
     "target_wiggly_pixels": [],
     "mask_bad_fits": True,
-    "slices_to_use": [0, -1, 1],
+    "slices_to_use": [0],
     "reference_spectra_percentile_cut": 1,
     "try_different_slice_threshold": 0.025,
     "min_fit_params": {
