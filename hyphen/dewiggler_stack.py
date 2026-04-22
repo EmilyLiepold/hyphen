@@ -10,14 +10,14 @@ from scipy.spatial import ConvexHull
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
 from astropy import units as u
-from stdatamodels.jwst.datamodels import ImageModel
+from stdatamodels.jwst.datamodels import IFUImageModel
 from stdatamodels.jwst.datamodels import MultiSlitModel
-from jwst.assign_wcs import nrs_ifu_wcs
 from joblib import delayed
 import dill as d
 from typing import Callable, Optional
 from functools import partial
 import warnings
+from jwst import datamodels
 
 warnings.filterwarnings("error", message="Mean of empty slice")
 warnings.filterwarnings("error", message="invalid value encountered in scalar divide")
@@ -65,49 +65,26 @@ def load_frames(fn_2d: str, fn_3d: str) -> tuple[HDUList, HDUList, str, str]:
 
 
 def get_wcs_ifu(
-    fn_2d: str, frame_3d: HDUList, use_cached_wcs: bool = True
-) -> tuple[list[WCS], WCS]:
+    fn_2d: str, fn_3d: str
+) -> tuple[WCS, WCS, IFUImageModel, datamodels.IFUCubeModel]:
     """
-    Get the wcs for the 2D and 3D frames
+    Get the wcs for the 2D and 3D frames.
 
     :param fn_2d: This is the filename for the 2D detector-frame fits file
-    :param frame_3d: This is the fits object for the 3D detector-frame fits file.
-    :param use_cached_wcs: If True, we'll try to use a cached WCS file. If False, we'll
-        compute the WCS from scratch. If there's an issue with loading the cached WCS,
-        we'll compute the WCS from scratch.
-    :return: A tuple containing a list of the WCS for each slice in the 2D frame and
-        the WCS for the 3D frame
+    :param fn_3d: This is the filename for the 3D rectified fits file
+    :return: A tuple containing the single global WCS for the 2D frame, the WCS for
+        the 3D frame, and the IFUImageModel (must be kept alive by the caller so the
+        underlying ASDF file handle is not garbage-collected).
     """
-    logger.info("Computing WCS for the slices in the 2D frame")
-
-    wcs_cachefilename = fn_2d.replace(".fits", ".wcs")
-
-    # Compute the wcs for the 2D frame (list of wcs for each slice) and for the 3D cube
-    recompute_wcs = False
-    if use_cached_wcs:
-        logger.info(f"Trying to use cached WCS located at {wcs_cachefilename}")
-        try:
-            frame_2d_wcs = d.load(open(wcs_cachefilename, "rb"))
-        except FileNotFoundError:
-            logger.warning("Cached WCS not found. Computing from scratch")
-            recompute_wcs = True
-    else:
-        recompute_wcs = True
-
-    if recompute_wcs:
-        frame_2d_wcs = nrs_ifu_wcs(ImageModel(fn_2d))
-        d.dump(frame_2d_wcs, open(wcs_cachefilename, "wb"))
-
-    frame_2d_wcs = d.load(open(wcs_cachefilename, "rb"))
-
-    # sort these slices by the lower value in the pixel_bounds
-    frame_2d_wcs = sorted(frame_2d_wcs, key=lambda x: x.pixel_bounds[1][0])
+    logger.info("Loading global IFU WCS from IFUImageModel")
+    ifu_model = IFUImageModel(fn_2d)
+    frame_2d_wcs = ifu_model.meta.wcs
 
     logger.info("Computing WCS for the 3D frame")
+    cube_model = datamodels.open(fn_3d)
+    frame_3d_wcs = cube_model.meta.wcs
 
-    frame_3d_wcs = WCS(frame_3d[1].header)
-
-    return frame_2d_wcs, frame_3d_wcs
+    return frame_2d_wcs, frame_3d_wcs, ifu_model, cube_model
 
 
 def get_wcs_msa(
@@ -185,7 +162,6 @@ def get_trace_model(
         return generic_trace(x)[0, :]
 
     return trace_x, trace_y
-
 
 def get_principal_axes_ifu(
     frame_3d: HDUList
@@ -552,9 +528,8 @@ def determine_image(frame_3d, frame_index=1, collapse_axis=0):
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always", RuntimeWarning)
         median_image = np.nanmedian(frame_3d[frame_index].data, axis=collapse_axis)
-        for warning in w:
-            if "All-NaN slice encountered" in str(warning.message):
-                logger.warning(f"{sum(np.isnan(median_image))} of {median_image.size} pixels in the images are all NaN")
+
+        logger.info(f"{np.sum(np.isnan(median_image))} of {median_image.size} pixels in the images are all NaN")
 
     if median_image.ndim == 1:
         median_image = np.atleast_2d(median_image)
@@ -1124,10 +1099,18 @@ def build_spaxel_map_plot_ifu(
 
         axes[tindex + 1].set_ylabel("x pixel")
         axes[tindex + 1].set_xlabel("y pixel")
-        axes[tindex + 1].set_xlim(np.min(bars[ts][:, 1]), np.max(bars[ts][:, 1]))
-        axes[tindex + 1].set_ylim(np.min(bars[ts][:, 0]), np.max(bars[ts][:, 0]))
+
+        xlim = (0, image_for_map.shape[1])
+        
+        ylim = (
+            np.nanmin(trace_models[tindex][0](axis_spectral)) - 15,
+            np.nanmax(trace_models[tindex][0](axis_spectral)) + 15
+            )
+        
+        axes[tindex + 1].set_xlim(*xlim)
+        axes[tindex + 1].set_ylim(*ylim)
         axes[tindex + 1].set_aspect("auto")
-        axes[tindex + 1].set_title(f"Slice {ts + 1}")
+        axes[tindex + 1].set_title(f"Slice and Trace")
 
     if isinstance(plot, PdfPages):
         plot.savefig()
@@ -1453,6 +1436,81 @@ def build_population_diagnostics(
     return None
 
 
+def get_2d_trace_model(wcs_2d: WCS,
+                       im_2d: IFUImageModel,
+                       n_target_traces: int = 1000) -> Callable[
+                           [float, float],
+                           tuple[
+                               Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]],
+                               Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]],
+                           ],
+                       ]:
+
+    # Okay, so now we want to build a large number of forward model points
+
+    ds = im_2d.data.shape
+
+    target_indices = [np.random.randint(0, s, size=n_target_traces * 10) for s in ds]
+    mask_2d = ~np.isnan(im_2d.data[tuple(target_indices[::-1])])
+
+    target_indices = [s[mask_2d] for s in target_indices]
+
+    # Now we want to do the forward pass for these indices to identify many valid RA, Dec
+    world_vals = wcs_2d.pixel_to_world_values(*target_indices)
+
+    world_lams = np.asarray(world_vals[2])
+    finite_lam_mask = np.isfinite(world_lams)
+    if not np.any(finite_lam_mask):
+        raise ValueError("WCS returned no finite wavelength values in the forward WCS pass.")
+    
+    finite_lams = world_lams[finite_lam_mask]
+    min_lam = np.min(finite_lams)
+    max_lam = np.max(finite_lams)
+
+    lams = np.linspace(min_lam, max_lam, 10)
+
+    # we're going to try to approximate the spectra using an order 6 polynomial
+    trace_samples: list[tuple[np.typing.NDArray[np.float64], ...]] = []
+    for tindex in range(len(world_vals[0])):
+        if len(trace_samples) >= n_target_traces:
+            break
+        ra = world_vals[0][tindex]
+        dec = world_vals[1][tindex]
+        trace = wcs_2d.world_to_pixel_values(ra * np.ones_like(lams), dec * np.ones_like(lams), lams)
+
+        trace_samples.append(trace)
+
+    trace_library = np.asarray(trace_samples)
+
+    source_sky_coords = SkyCoord(ra=world_vals[0][:len(trace_library)] * u.deg, dec=world_vals[1][:len(trace_library)] * u.deg, frame='icrs')
+
+    def trace_factory(ra, dec):
+        # first, we want to identify the index in our trace library which is closest to the input ra and dec
+
+        input_coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame='icrs')
+        separations = input_coord.separation(source_sky_coords)
+        closest_index = np.argmin(separations)
+        closest_trace = trace_library[closest_index]
+
+        # now do a 6th order polyfit for that trace for both the x and y as a function of lambda
+        pf_x = np.polyfit(lams, closest_trace[0], 6)
+        pf_y = np.polyfit(lams, closest_trace[1], 6)
+
+        # Now we want to build a function which takes in a wavelenghth array and returns the x for the trace at those wavelengths and a function which does the same for y.
+
+        def trace_x(lam_array):
+            return np.polyval(pf_x, lam_array)
+        
+        def trace_y(lam_array):
+            return np.polyval(pf_y, lam_array)
+
+        return trace_y, trace_x
+
+    return trace_factory
+
+
+
+
 def dewiggler_stack_ifu(
     frame_2d_filename: str,
     frame_3d_filename: str,
@@ -1484,7 +1542,7 @@ def dewiggler_stack_ifu(
     },
     target_wiggle_pixels: list = [],
     mask_bad_fits: bool = True,
-    slices_to_use: list = [0, -1, 1],
+    slices_to_use: list = [0],
     reference_spectra_percentile_cut: float = 1,
     try_different_slice_threshold: float = 0.025,
     weight_based_masking_threshold: Optional[float | None] = 0.5,
@@ -1556,20 +1614,22 @@ def dewiggler_stack_ifu(
 
     detector = determine_detector_name(frame_2d)
 
-    frame_2d_wcs, frame_3d_wcs = get_wcs_ifu(
-        frame_2d_filename, frame_3d, use_cached_wcs=use_cached_wcs
+    if use_cached_wcs:
+        logger.warning(
+            "use_cached_wcs is deprecated and has no effect. "
+            "The IFU WCS is now loaded directly from IFUImageModel."
+        )
+
+    frame_2d_wcs, frame_3d_wcs, _ifu_model, _cube_model = get_wcs_ifu(
+        frame_2d_filename, frame_3d_filename
     )
+
+    trace_model_factory = get_2d_trace_model(frame_2d_wcs, _ifu_model)
 
     axis_pixel, axis_slice, axis_spectral = get_principal_axes_ifu(frame_3d)
 
-    print(f'{axis_pixel.shape=}')
-    print(f'{axis_slice.shape=}')
-    print(f'{axis_spectral.shape=}')
     spatial_arr = determine_spatial_arr(axis_pixel, axis_slice)
 
-
-    print(f'{spatial_arr.shape=}')
-    # exit()
     plot = initialize_plot(plot)
 
     logger.info("Constructing a median image")
@@ -1618,8 +1678,6 @@ def dewiggler_stack_ifu(
         )
     )
 
-    # close_plot(plot)
-    # exit()
 
     background_reference_spectrum, pf_back, smoothed_background_reference_spectrum = (
         determine_reference_spectrum(
@@ -1710,7 +1768,7 @@ def dewiggler_stack_ifu(
 
         base_target_slice = int(np.floor(fp[0] * len(bars)))
 
-        target_slices = [base_target_slice + s for s in slices_to_use]
+        target_slices = [0]
 
         logger.debug(
             f"This spaxel is estimated to be in slice {base_target_slice + 1} "
@@ -1746,18 +1804,11 @@ def dewiggler_stack_ifu(
         weight_based_mask = weight_based_mask.astype(bool)
 
         # find world coordinates for the target pixel
-        world_coords = frame_3d_wcs.pixel_to_world(
+        world_coords = frame_3d_wcs.pixel_to_world_values(
             target_index[1], target_index[0], 1000
         )
 
-        trace_models = [
-            get_trace_model(
-                frame_2d_wcs[slice_index],
-                world_coords[0].ra.deg,
-                world_coords[0].dec.deg,
-            )
-            for slice_index in target_slices
-        ]
+        trace_models = list([trace_model_factory(world_coords[0], world_coords[1])])
 
         build_spaxel_map_plot_ifu(
             plot,
