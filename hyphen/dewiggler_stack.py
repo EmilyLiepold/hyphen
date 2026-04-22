@@ -1457,9 +1457,15 @@ def get_2d_trace_model(wcs_2d: WCS,
 
     # Now we want to do the forward pass for these indices to identify many valid RA, Dec
     world_vals = wcs_2d.pixel_to_world_values(*target_indices)
+
+    world_lams = np.asarray(world_vals[2])
+    finite_lam_mask = np.isfinite(world_lams)
+    if not np.any(finite_lam_mask):
+        raise ValueError("WCS returned no finite wavelength values in the forward WCS pass.")
     
-    min_lam = np.min(world_vals[2])
-    max_lam = np.max(world_vals[2])
+    finite_lams = world_lams[finite_lam_mask]
+    min_lam = np.min(finite_lams)
+    max_lam = np.max(finite_lams)
 
     lams = np.linspace(min_lam, max_lam, 10)
 
