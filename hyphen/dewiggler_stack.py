@@ -995,7 +995,7 @@ def build_spaxel_map_plot_ifu(
     target_pixel: tuple[int, int],
     target_index,
     target_slices: list[int],
-    frame_2d: HDUList,
+    frame_2d: np.ndarray,
     bars: np.ndarray,
     trace_models: list[
         list[
@@ -1077,7 +1077,7 @@ def build_spaxel_map_plot_ifu(
     axes[0].set_xlabel("Index 2, Slice Axis, arcsec")
     axes[0].grid(c="r")
 
-    image_for_map = np.log10(frame_2d[1].data)
+    image_for_map = np.log10(frame_2d)
 
     for tindex, ts in enumerate(target_slices):
         axes[tindex + 1].imshow(
@@ -1712,6 +1712,11 @@ def dewiggler_stack_ifu(
 
     build_bar_map_plot(plot, frame_2d, bars, frame_2d_shortname, detector)
 
+    _sci_data = np.array(frame_3d[1].data)
+    _dq_data  = np.array(frame_3d[3].data)
+    _wgt_data = np.array(frame_3d[4].data)
+    _det_image = np.array(frame_2d[1].data)
+
     # Now start iterating through the wiggly pixels
     wiggly_pixels = np.where(
         (~np.isnan(image)) * (spaxel_distance.T < dewiggling_radius)
@@ -1726,6 +1731,10 @@ def dewiggler_stack_ifu(
     )
     if diagnostic_fraction != 1:
         logger.info(f"Only dewiggling every {diagnostic_fraction}th pixel")
+
+    _spaxel_world_coords = frame_3d_wcs.pixel_to_world_values(
+        wiggly_pixels[1], wiggly_pixels[0], np.full(len(wiggly_pixels[0]), 1000)
+    )
 
     def dewiggle_main_loop(i: int):
 
@@ -1777,7 +1786,7 @@ def dewiggler_stack_ifu(
         )
 
         if weight_based_masking_threshold is not None:
-            weight_spectrum = frame_3d[4].data[:, target_index[0], target_index[1]]
+            weight_spectrum = _wgt_data[:, target_index[0], target_index[1]]
             median_weight = np.nanmedian(weight_spectrum[weight_spectrum > 0.0])
             weight_based_mask = (
                 weight_spectrum > weight_based_masking_threshold * median_weight
@@ -1800,11 +1809,7 @@ def dewiggler_stack_ifu(
         weight_based_mask = weight_based_mask.astype(bool)
 
         # find world coordinates for the target pixel
-        world_coords = frame_3d_wcs.pixel_to_world_values(
-            target_index[1], target_index[0], 1000
-        )
-
-        trace_models = list([trace_model_factory(world_coords[0], world_coords[1])])
+        trace_models = list([trace_model_factory(_spaxel_world_coords[0][i], _spaxel_world_coords[1][i])])
 
         build_spaxel_map_plot_ifu(
             plot,
@@ -1816,7 +1821,7 @@ def dewiggler_stack_ifu(
             target_pixel,
             target_index,
             target_slices,
-            frame_2d,
+            _det_image,
             bars,
             trace_models,
             dewiggling_radius,
@@ -1858,8 +1863,8 @@ def dewiggler_stack_ifu(
                     model_trace,
                     pf,
                     axis_spectral,
-                    frame_3d[1].data[:, target_index[0], target_index[1]],
-                    frame_3d[3].data[:, target_index[0], target_index[1]],
+                    _sci_data[:, target_index[0], target_index[1]],
+                    _dq_data[:, target_index[0], target_index[1]],
                     plot=plot,
                     plot_label=(
                         f'({target_index[0]},{target_index[1]}), r = {dist:.3f}", '
@@ -1911,7 +1916,7 @@ def dewiggler_stack_ifu(
 
         total_steps = len(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
         xsols = ProgressParallel(
-            n_jobs=n_jobs, verbose=0, require="sharedmem", total=total_steps
+            n_jobs=n_jobs, verbose=0, prefer="processes", total=total_steps
         )(
             delayed(dewiggle_main_loop)(i)
             for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
@@ -2415,7 +2420,7 @@ def dewiggler_stack_msa(
 
         total_steps = len(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
         xsols = ProgressParallel(
-            n_jobs=n_jobs, verbose=0, require="sharedmem", total=total_steps
+            n_jobs=n_jobs, verbose=0, prefer="processes", total=total_steps
         )(
             delayed(dewiggle_main_loop)(i)
             for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
