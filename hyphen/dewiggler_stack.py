@@ -163,40 +163,6 @@ def get_trace_model(
 
     return trace_x, trace_y
 
-def get_trace_model_ifu(
-    detector_wcs: WCS, ra: float, dec: float, mapped_wcs_coord: str = 'detector',
-) -> tuple[
-    Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]],
-    Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]]
-]:
-    """
-    Get the trace model for a given ra and dec
-
-    :param detector_wcs: The WCS for the detector-frame exposure
-    :param ra: The RA in degrees to use for the spectral trace
-    :param dec: The DEC in degrees to use for the spectral trace
-    :return:
-    """
-
-    def generic_trace(
-        x: np.typing.NDArray[np.float64]
-    ) -> np.typing.NDArray[np.float64]:
-        x0 = x * 1e-6
-        p = np.atleast_2d(detector_wcs.world_to_pixel_values(ra, dec, x0))
-        print(ra, dec, x0)
-        print(p)
-        return p
-
-    def trace_x(x: np.typing.NDArray[np.float64]) -> np.typing.NDArray[np.float64]:
-        return generic_trace(x)[1, :]
-
-    def trace_y(x: np.typing.NDArray[np.float64]) -> np.typing.NDArray[np.float64]:
-        return generic_trace(x)[0, :]
-
-    return trace_x, trace_y
-
-
-
 def get_principal_axes_ifu(
     frame_3d: HDUList
     ) -> tuple[
