@@ -1481,22 +1481,22 @@ def get_2d_trace_model(wcs_2d: WCS,
     xy_flat = wcs_2d.world_to_pixel_values(ra_batch, dec_batch, lam_batch)
     trace_library = np.asarray(xy_flat).T.reshape(n_traces, len(lams), 2)
 
-    source_sky_coords = SkyCoord(ra=valid_ra * u.deg, dec=valid_dec * u.deg, frame='icrs')
+    V = np.vander(lams, 7)
+    pf_x_lib, _, _, _ = np.linalg.lstsq(V, trace_library[:, :, 0].T, rcond=None)
+    pf_y_lib, _, _, _ = np.linalg.lstsq(V, trace_library[:, :, 1].T, rcond=None)
+    pf_x_lib = pf_x_lib.T
+    pf_y_lib = pf_y_lib.T
 
     def trace_factory(ra, dec):
-        input_coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame='icrs')
-        separations = input_coord.separation(source_sky_coords)
-        closest_index = np.argmin(separations)
-        closest_trace = trace_library[closest_index]
+        d2 = (valid_ra - ra) ** 2 + (valid_dec - dec) ** 2
+        closest_index = np.argmin(d2)
 
-        pf_x = np.polyfit(lams, closest_trace[:, 0], 6)
-        pf_y = np.polyfit(lams, closest_trace[:, 1], 6)
-
-        # Now we want to build a function which takes in a wavelenghth array and returns the x for the trace at those wavelengths and a function which does the same for y.
+        pf_x = pf_x_lib[closest_index]
+        pf_y = pf_y_lib[closest_index]
 
         def trace_x(lam_array):
             return np.polyval(pf_x, lam_array)
-        
+
         def trace_y(lam_array):
             return np.polyval(pf_y, lam_array)
 
@@ -1631,8 +1631,6 @@ def dewiggler_stack_ifu(
     logger.info("Constructing a median image")
 
     image = determine_image(frame_3d)
-
-    print(f'{image.shape=}')
 
     target_pixel = determine_target_pixel_ifu(
         target_pixel=target_pixel,
