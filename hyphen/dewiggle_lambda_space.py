@@ -177,6 +177,535 @@ def parse_wiggle_args(
         return list(envelope_args), list(wiggle_args), float(f)
 
 
+def plot_dewiggle_result(
+    trace_model,
+    continuum_model,
+    lam,
+    target_spectrum,
+    dq_spectrum,
+    saved_xsol,
+    saved_fit_params,
+    saved_reduced_x2,
+    plot,
+    plot_label="",
+    background_pf=None,
+    target_maskarray=None,
+    reusable_artists=None,
+    _precomputed=None,
+):
+    if _precomputed is not None:
+        x_vals = _precomputed["x_vals"]
+        y_for_fft = _precomputed["y_for_fft"]
+        med_px = _precomputed["med_px"]
+        good_indices = _precomputed["good_indices"]
+        normalization = _precomputed["normalization"]
+        normalization_constant = _precomputed["normalization_constant"]
+        ww = _precomputed["ww"]
+        jwm = _precomputed["jwm"]
+        envelope = _precomputed["envelope"]
+        background_prototype = _precomputed["background_prototype"]
+        ps_continuum = _precomputed["ps_continuum"]
+        gal_continuum = _precomputed["gal_continuum"]
+        spectrum_without_continuum = _precomputed["spectrum_without_continuum"]
+        freq = _precomputed["freq"]
+        X_spec = _precomputed["X_spec"]
+        X_res = _precomputed["X_res"]
+        xsol = np.asarray(saved_xsol, dtype=float)
+        fit_params = saved_fit_params
+        reduced_x2 = saved_reduced_x2
+    else:
+        normalization = np.polyval(continuum_model, lam)
+        normalized_spectrum = target_spectrum / normalization
+        good_indices = np.isfinite(normalized_spectrum)
+        normalization_constant = np.nanmedian(normalized_spectrum[good_indices])
+        normalized_spectrum = normalized_spectrum / normalization_constant
+
+        good_indices = np.isfinite(normalized_spectrum)
+        if dq_spectrum is None:
+            dq_spectrum = np.zeros_like(target_spectrum)
+        good_indices = (
+            good_indices
+            * (dq_spectrum[:] == 0)
+            * (
+                normalized_spectrum
+                < np.nanpercentile(normalized_spectrum[good_indices], 99)
+            )
+            * (
+                normalized_spectrum
+                > np.nanpercentile(normalized_spectrum[good_indices], 1)
+            )
+        )
+        if target_maskarray is not None:
+            good_indices = good_indices * target_maskarray
+
+        med_px = trace_model[0][0](lam)
+        med_px -= np.nanmedian(med_px)
+        inverse_model = partial(
+            np.interp,
+            xp=med_px[np.argsort(med_px)],
+            fp=lam[np.argsort(med_px)]
+        )
+
+        background_normalization = np.nanmedian(
+            np.polyval(background_pf, lam) / np.polyval(continuum_model, lam)
+        )
+
+        def background_prototype_exact(x):
+            if background_normalization == 0:
+                return np.zeros_like(x)
+            else:
+                return (
+                    np.polyval(background_pf, inverse_model(x))
+                    / np.polyval(continuum_model, inverse_model(x))
+                    / background_normalization
+                )
+
+        background_prototype_pf = np.polyfit(
+            med_px[good_indices],
+            background_prototype_exact(med_px[good_indices]),
+            len(background_pf) + 4,
+        )
+
+        def background_prototype(x):
+            return np.polyval(background_prototype_pf, x)
+
+        x_vals = med_px[good_indices]
+        y_for_fft = normalized_spectrum[good_indices]
+        envelope = partial(generic_envelope, min_x=np.min(x_vals), max_x=np.max(x_vals))
+
+        ww, _, jwm, _, _ = build_wiggly_model(
+            envelope,
+            background_prototype,
+            fit_orders=saved_fit_params,
+            x_min=float(np.min(x_vals)),
+            x_max=float(np.max(x_vals)),
+        )
+
+        noise_spectrum = (
+            np.ones_like(target_spectrum) * normalization * normalization_constant
+        )
+        normalized_noise_spectrum = (
+            noise_spectrum / normalization / normalization_constant
+        )
+        noise_for_fft = normalized_noise_spectrum[good_indices]
+
+        xsol = saved_xsol
+        fit_params = saved_fit_params
+        reduced_x2 = saved_reduced_x2
+
+        ps_continuum = envelope(x_vals, *xsol[0 : fit_params["alpha_order"] + 1])
+        gal_continuum = background_prototype(x_vals) * envelope(
+            x_vals,
+            *xsol[
+                fit_params["alpha_order"]
+                + 1 : fit_params["alpha_order"]
+                + fit_params["gamma_order"]
+                + 2
+            ],
+        )
+        spectrum_without_continuum = y_for_fft - ps_continuum - gal_continuum
+        residual_without_continuum = (
+            y_for_fft - ps_continuum - gal_continuum - jwm(*xsol)(x_vals)
+        )
+
+        fine_x_grid = np.linspace(np.min(x_vals), np.max(x_vals), 20 * len(x_vals))
+        fine_grid_y_spec = np.interp(
+            fine_x_grid,
+            x_vals[np.argsort(x_vals)],
+            spectrum_without_continuum[np.argsort(x_vals)]
+        )
+        fine_grid_y_res = np.interp(
+            fine_x_grid,
+            x_vals[np.argsort(x_vals)],
+            residual_without_continuum[np.argsort(x_vals)]
+        )
+        X_spec = fft(fine_grid_y_spec)
+        X_res = fft(fine_grid_y_res)
+        n = len(X_spec)
+        dt = fine_x_grid[1] - fine_x_grid[0]
+        freq = np.fft.fftfreq(n, d=dt)
+        freq_trim = 5
+        freq_we_care_about = (freq[:] > -freq_trim) & (freq[:] < freq_trim)
+        freq = freq[freq_we_care_about]
+        X_spec = X_spec[freq_we_care_about]
+        X_res = X_res[freq_we_care_about]
+
+    logger.debug("Beginning plots")
+    envelope_args, _, _ = parse_wiggle_args(
+        xsol,
+        fit_params,
+    )
+    envelope_args_str = ", ".join([f"{x:.2f}" for x in envelope_args])
+
+    freq_trim = 5
+    lambda_fullmodel_y = normalization_constant * normalization * ww(med_px, *xsol)
+    lambda_wiggle_y = normalization_constant * normalization * jwm(*xsol)(med_px)
+    lambda_dewiggled_y = target_spectrum - lambda_wiggle_y
+
+    det_fullmodel_y = ww(x_vals, *xsol)
+    det_wiggle_y = jwm(*xsol)(x_vals)
+    det_dewiggled_y = y_for_fft - det_wiggle_y
+
+    res_dewiggled_y = y_for_fft - det_fullmodel_y
+    res_input_y = spectrum_without_continuum
+    min_y = np.nanmin([np.nanmin(res_dewiggled_y), np.nanmin(res_input_y)])
+    max_y = np.nanmax([np.nanmax(res_dewiggled_y), np.nanmax(res_input_y)])
+    ax_ylim = np.nanmax(np.abs([min_y, max_y]))
+
+    spec_fft_norm = np.abs(X_spec) / np.nanmax(np.abs(X_spec))
+    res_fft_norm = np.abs(X_res) / np.nanmax(np.abs(X_spec))
+
+    lambda_space_xlim = (np.min(lam[good_indices]), np.max(lam[good_indices]))
+    x_space_xlim = (np.max(x_vals), np.min(x_vals))
+    low_x = int(np.floor(x_space_xlim[0]))
+    high_x = int(np.ceil(x_space_xlim[1]))
+
+    should_close = reusable_artists is None
+
+    if reusable_artists is None:
+        fig, axes = plt.subplots(1, 1, figsize=(6.0, 3.75))
+        fig2, axes2 = plt.subplots(3, 1, figsize=(6.0, 9.7))
+
+        fig.subplots_adjust(left=0.1, right=0.98, top=0.87, bottom=0.12, hspace=0.0)
+        fig2.subplots_adjust(left=0.12, right=0.98, top=0.95, bottom=0.06, hspace=0.1)
+
+        axes.set_title(
+            f"{plot_label}\n"
+            f"RMS residual = {100 * reduced_x2**0.5:.2f}%"
+        )
+        axes2[0].set_title(
+            f"{plot_label}\n"
+            f"RMS residual = {100 * reduced_x2**0.5:.2f}%"
+        )
+
+        # axes[0].set_ylabel("Flux, arbitrary")
+        # axes[0].plot(lam, target_spectrum, label="Input Spectrum", c="k")
+
+        # yrange = get_ybounds([1e50, 1e-50], target_spectrum)
+        # axes[0].plot(
+        #     lam,
+        #     target_spectrum
+        #     - normalization_constant * normalization * jwm(*xsol)(med_px),
+        #     label="Dewiggled Spectrum",
+        #     c="r",
+        # )
+
+        # yrange = get_ybounds(
+        #     yrange,
+        #     target_spectrum
+        #     - normalization_constant * normalization * jwm(*xsol)(med_px),
+        # )
+
+        # axes[0].set_ylim(0.9 * yrange[0], 1.1 * yrange[1])
+        # axes[0].legend(fontsize=6)
+
+        lam_input, = axes.plot(
+            lam,
+            target_spectrum,
+            label="Input Spectrum",
+            c="k",
+            linewidth=0.5,
+            
+        )
+        lam_fullmodel, = axes.plot(
+            lam,
+            lambda_fullmodel_y,
+            label="Full Model",
+            c="g",
+            linewidth=0.5,
+            
+        )
+        lam_wiggle, = axes.plot(
+            lam,
+            lambda_wiggle_y,
+            label="Wiggle Model",
+            c="b",
+            linewidth=0.5,
+            
+        )
+        lam_dewiggled, = axes.plot(
+            lam,
+            lambda_dewiggled_y,
+            label="Dewiggled Spectrum",
+            c="r",
+            linewidth=0.5,
+            
+        )
+
+        det_input, = axes2[0].plot(
+            x_vals,
+            y_for_fft,
+            label="Input Spectrum",
+            c="k",
+            linewidth=0.5,
+            
+        )
+        det_fullmodel, = axes2[0].plot(
+            x_vals,
+            det_fullmodel_y,
+            label="Full Model",
+            c="g",
+            linewidth=0.5,
+            
+        )
+        det_ps_cont, = axes2[0].plot(
+            x_vals,
+            ps_continuum,
+            label=f"Central component: alpha={xsol[0]:.2f}",
+            c="0.5",
+            linestyle=":",
+            linewidth=0.5,
+            
+        )
+        det_bg_cont, = axes2[0].plot(
+            x_vals,
+            gal_continuum,
+            # xsol[-1]
+            # * np.polyval(background_pf, inverse_model(X_vals))
+            # / np.polyval(continuum_model, inverse_model(X_vals)),
+            label=f"Background component: gamma={xsol[1]:.2f}",
+            c="0.5",
+            linestyle="dashed",
+            linewidth=0.5,
+            
+        )
+        det_wiggle, = axes2[0].plot(
+            x_vals,
+            det_wiggle_y,
+            linewidth=0.5,
+            label=f"Wiggle Model\nl=({envelope_args_str})",
+            c="b",
+            
+        )
+
+        # axes2[0].plot(
+        #     x_vals,
+        #     jwm(*xsol)(x_vals, envelope_only=True),
+        #     label=f"Wiggle Envelope,  l=({envelope_args_str})",
+        #     c="b",
+        #     linestyle=":",
+        # )
+        # axes2[0].plot(
+        #     x_vals, -jwm(*xsol)(x_vals, envelope_only=True), c="b", linestyle=":"
+        # )
+        det_dewiggled, = axes2[0].plot(
+            x_vals,
+            det_dewiggled_y,
+            label="Dewiggled Spectrum",
+            c="r",
+            linewidth=0.5,
+            
+        )
+
+        handles, labels = axes2[0].get_legend_handles_labels()
+        order = [0, 1, 4, 5, 2, 3]
+        axes2[0].legend(
+            [handles[i] for i in order],
+            [labels[i] for i in order],
+            fontsize=6,
+            loc='lower center',
+            framealpha=1.0,
+        )
+
+        axes2[0].set_ylabel("Flux, normalized (arbitrary)")
+        axes2[0].set_xlabel('Detector pixel (arbitrary offset)')
+
+        res_dewiggled, = axes2[1].plot(
+            x_vals,
+            res_dewiggled_y,
+            label="Dewiggled spectrum minus continuum",
+            c="r",
+            linewidth=0.5,
+            
+        )
+        res_input, = axes2[1].plot(
+            x_vals,
+            res_input_y,
+            label="Input spectrum minus continuum",
+            c="k",
+            linewidth=0.5,
+            
+        )
+        axes2[1].set_ylim(-ax_ylim, ax_ylim)
+
+        axes2[1].set_ylabel("Residual")
+        axes2[1].set_xlabel('Detector pixel (arbitrary offset)')
+        res_hline_neg = axes2[1].axhline(
+            -(reduced_x2**0.5),
+            c="0.5",
+            linestyle="--",
+            label='5% residual',
+            zorder=-10,
+        )
+        res_hline_zero = axes2[1].axhline(0, c="0.5", linestyle="--", zorder=-10)
+        res_hline_pos = axes2[1].axhline(
+            reduced_x2**0.5,
+            c="0.5",
+            linestyle="--",
+            zorder=-10,
+        )
+        axes2[1].legend(fontsize=6, loc='lower center')
+
+        fft_spec_stem = axes2[2].stem(freq, spec_fft_norm, "k")
+        fft_res_stem = axes2[2].stem(freq, res_fft_norm, "r")
+        axes2[2].scatter([], [], c='k', label='Input spectrum minus continuum')
+        axes2[2].scatter([], [], c='r', label='Dewiggled spectrum minus continuum')
+
+        axes2[2].set_xlim(0, freq_trim)
+        axes2[2].set_ylim(0, 1.0)
+
+        axes2[2].set_ylabel('Fourier spectrum')
+        axes2[2].set_xlabel('Frequency (1 / detector pixels)')
+
+        axes2[2].legend(fontsize=6, loc='upper right')
+        axes.set_ylabel("Flux, arbitrary")
+        axes.legend(fontsize=6, loc='lower center', framealpha=1.0)
+        axes.set_xlabel("Wavelength (micron)")
+        try:
+            axes.set_ylim(
+                np.nanmin((lambda_wiggle_y)[good_indices]),
+                np.nanmax(target_spectrum[good_indices]),
+            )
+        except Exception:
+            axes.set_ylim(0, np.nanmax(target_spectrum[good_indices]))
+
+        axes.set_xlim(lambda_space_xlim)
+
+        axes2[0].set_xlim(x_space_xlim)
+        axes2[1].set_xlim(x_space_xlim)
+
+        axes2[0].set_xticks(np.arange(low_x, high_x, 1))
+        axes2[0].grid()
+        axes2[1].set_xticks(np.arange(low_x, high_x, 1))
+        axes2[1].grid(axis='x')
+
+        reusable_artists = {
+            'fig': fig,
+            'fig2': fig2,
+            'axes': axes,
+            'axes2': axes2,
+            'lam_input': lam_input,
+            'lam_fullmodel': lam_fullmodel,
+            'lam_wiggle': lam_wiggle,
+            'lam_dewiggled': lam_dewiggled,
+            'det_input': det_input,
+            'det_fullmodel': det_fullmodel,
+            'det_ps_cont': det_ps_cont,
+            'det_bg_cont': det_bg_cont,
+            'det_wiggle': det_wiggle,
+            'det_dewiggled': det_dewiggled,
+            'res_dewiggled': res_dewiggled,
+            'res_input': res_input,
+            'res_hline_pos': res_hline_pos,
+            'res_hline_zero': res_hline_zero,
+            'res_hline_neg': res_hline_neg,
+            'fft_spec_stem': fft_spec_stem,
+            'fft_res_stem': fft_res_stem,
+        }
+    else:
+        should_close = False
+        fig = reusable_artists['fig']
+        fig2 = reusable_artists['fig2']
+        axes = reusable_artists['axes']
+        axes2 = reusable_artists['axes2']
+
+        reusable_artists['lam_input'].set_xdata(lam)
+        reusable_artists['lam_input'].set_ydata(target_spectrum)
+        reusable_artists['lam_fullmodel'].set_xdata(lam)
+        reusable_artists['lam_fullmodel'].set_ydata(lambda_fullmodel_y)
+        reusable_artists['lam_wiggle'].set_xdata(lam)
+        reusable_artists['lam_wiggle'].set_ydata(lambda_wiggle_y)
+        reusable_artists['lam_dewiggled'].set_xdata(lam)
+        reusable_artists['lam_dewiggled'].set_ydata(lambda_dewiggled_y)
+
+        reusable_artists['det_input'].set_xdata(x_vals)
+        reusable_artists['det_input'].set_ydata(y_for_fft)
+        reusable_artists['det_fullmodel'].set_xdata(x_vals)
+        reusable_artists['det_fullmodel'].set_ydata(det_fullmodel_y)
+        reusable_artists['det_ps_cont'].set_xdata(x_vals)
+        reusable_artists['det_ps_cont'].set_ydata(ps_continuum)
+        reusable_artists['det_bg_cont'].set_xdata(x_vals)
+        reusable_artists['det_bg_cont'].set_ydata(gal_continuum)
+        reusable_artists['det_wiggle'].set_xdata(x_vals)
+        reusable_artists['det_wiggle'].set_ydata(det_wiggle_y)
+        reusable_artists['det_dewiggled'].set_xdata(x_vals)
+        reusable_artists['det_dewiggled'].set_ydata(det_dewiggled_y)
+
+        reusable_artists['res_dewiggled'].set_xdata(x_vals)
+        reusable_artists['res_dewiggled'].set_ydata(res_dewiggled_y)
+        reusable_artists['res_input'].set_xdata(x_vals)
+        reusable_artists['res_input'].set_ydata(res_input_y)
+
+        markerline, stemlines, baseline = reusable_artists['fft_spec_stem']
+        markerline.set_data(freq, spec_fft_norm)
+        stemlines.set_segments(
+            [[[freq[j], 0], [freq[j], spec_fft_norm[j]]] for j in range(len(freq))]
+        )
+        markerline, stemlines, baseline = reusable_artists['fft_res_stem']
+        markerline.set_data(freq, res_fft_norm)
+        stemlines.set_segments(
+            [[[freq[j], 0], [freq[j], res_fft_norm[j]]] for j in range(len(freq))]
+        )
+
+        reusable_artists['det_ps_cont'].set_label(
+            f"Central component: alpha={xsol[0]:.2f}"
+        )
+        reusable_artists['det_bg_cont'].set_label(
+            f"Background component: gamma={xsol[1]:.2f}"
+        )
+        reusable_artists['det_wiggle'].set_label(
+            f"Wiggle Model\nl=({envelope_args_str})"
+        )
+        handles, labels = axes2[0].get_legend_handles_labels()
+        axes2[0].legend(
+            [handles[i] for i in [0, 1, 4, 5, 2, 3]],
+            [labels[i] for i in [0, 1, 4, 5, 2, 3]],
+            fontsize=6,
+            loc='lower center',
+            framealpha=1.0,
+        )
+
+        axes.set_title(
+            f"{plot_label}\n"
+            f"RMS residual = {100 * reduced_x2**0.5:.2f}%"
+        )
+        axes2[0].set_title(
+            f"{plot_label}\n"
+            f"RMS residual = {100 * reduced_x2**0.5:.2f}%"
+        )
+
+        reusable_artists['res_hline_neg'].set_ydata([-(reduced_x2**0.5), -(reduced_x2**0.5)])
+        reusable_artists['res_hline_zero'].set_ydata([0, 0])
+        reusable_artists['res_hline_pos'].set_ydata([reduced_x2**0.5, reduced_x2**0.5])
+
+        try:
+            axes.set_ylim(
+                np.nanmin((lambda_wiggle_y)[good_indices]),
+                np.nanmax(target_spectrum[good_indices]),
+            )
+        except Exception:
+            axes.set_ylim(0, np.nanmax(target_spectrum[good_indices]))
+
+        axes.set_xlim(lambda_space_xlim)
+        axes2[0].set_xlim(x_space_xlim)
+        axes2[1].set_xlim(x_space_xlim)
+        axes2[1].set_ylim(-ax_ylim, ax_ylim)
+
+        axes2[0].set_xticks(np.arange(low_x, high_x, 1))
+        axes2[1].set_xticks(np.arange(low_x, high_x, 1))
+        axes2[2].set_xlim(0, freq_trim)
+        axes2[2].set_ylim(0, 1.0)
+
+    plot.savefig(fig)
+    plot.savefig(fig2)
+
+    if should_close:
+        plt.close(fig)
+        plt.close(fig2)
+
+    return reusable_artists
+
+
 def convert_wiggle_solution(
 
     sol: np.typing.NDArray[np.float64],
@@ -861,208 +1390,23 @@ def dewiggle_lambda_space(
     X_res = X_res[freq_we_care_about]
 
     if plot:
-        logger.debug("Beginning plots")
-        envelope_args, wiggle_args, f = parse_wiggle_args(
-            xsol,
-            fit_params,
+        plot_dewiggle_result(
+            trace_model, continuum_model, lam, target_spectrum, dq_spectrum,
+            saved_xsol=xsol, saved_fit_params=fit_params,
+            saved_reduced_x2=reduced_x2,
+            plot=plot, plot_label=plot_label,
+            background_pf=background_pf, target_maskarray=target_maskarray,
+            _precomputed={
+                'x_vals': x_vals, 'y_for_fft': y_for_fft, 'med_px': med_px,
+                'good_indices': good_indices, 'normalization': normalization,
+                'normalization_constant': normalization_constant,
+                'ww': ww, 'jwm': jwm, 'envelope': envelope,
+                'background_prototype': background_prototype,
+                'ps_continuum': ps_continuum, 'gal_continuum': gal_continuum,
+                'spectrum_without_continuum': spectrum_without_continuum,
+                'freq': freq, 'X_spec': X_spec, 'X_res': X_res,
+            },
         )
-
-        fig, axes = plt.subplots(1, 1, figsize=(6.0, 3.75))
-        fig2, axes2 = plt.subplots(3, 1, figsize=(6.0, 9.7))
-
-        fig.subplots_adjust(left=0.1, right=0.98, top=0.87, bottom=0.12, hspace=0.0)
-        
-        fig2.subplots_adjust(left=0.12, right=0.98, top=0.95, bottom=0.06, hspace=0.1)
-
-        axes.set_title(
-            f"{plot_label}\n"
-            f"RMS residual = {100 * reduced_x2**0.5:.2f}%"
-        )
-
-        axes2[0].set_title(
-            f"{plot_label}\n"
-            f"RMS residual = {100 * reduced_x2**0.5:.2f}%"
-        )
-
-        # axes[0].set_ylabel("Flux, arbitrary")
-        # axes[0].plot(lam, target_spectrum, label="Input Spectrum", c="k")
-
-        # yrange = get_ybounds([1e50, 1e-50], target_spectrum)
-        # axes[0].plot(
-        #     lam,
-        #     target_spectrum
-        #     - normalization_constant * normalization * jwm(*xsol)(med_px),
-        #     label="Dewiggled Spectrum",
-        #     c="r",
-        # )
-
-        # yrange = get_ybounds(
-        #     yrange,
-        #     target_spectrum
-        #     - normalization_constant * normalization * jwm(*xsol)(med_px),
-        # )
-
-        # axes[0].set_ylim(0.9 * yrange[0], 1.1 * yrange[1])
-        # axes[0].legend(fontsize=6)
-
-        axes2[0].plot(x_vals, y_for_fft, label="Input Spectrum", c="k",
-                      linewidth=0.5,
-                      )
-        axes2[0].plot(x_vals, ww(x_vals, *xsol), label="Full Model", c="g",
-                      linewidth=0.5,
-                      )
-        axes2[0].plot(
-            x_vals,
-            ps_continuum,
-            label=f"Central component: alpha={xsol[0]:.2f}",
-            c="0.5",
-            linestyle=":",
-            linewidth=0.5,
-        )
-        axes2[0].plot(
-            x_vals,
-            gal_continuum,
-            # xsol[-1]
-            # * np.polyval(background_pf, inverse_model(X_vals))
-            # / np.polyval(continuum_model, inverse_model(X_vals)),
-            label=f"Background component: gamma={xsol[1]:.2f}",
-            c="0.5",
-            linestyle="dashed",
-            linewidth=0.5,
-        )
-        envelope_args_str = ", ".join([f"{x:.2f}" for x in envelope_args])
-        axes2[0].plot(x_vals, jwm(*xsol)(x_vals),
-                      linewidth=0.5,
-                      label=f"Wiggle Model\nl=({envelope_args_str})", c="b")
-        
-        # axes2[0].plot(
-        #     x_vals,
-        #     jwm(*xsol)(x_vals, envelope_only=True),
-        #     label=f"Wiggle Envelope,  l=({envelope_args_str})",
-        #     c="b",
-        #     linestyle=":",
-        # )
-        # axes2[0].plot(
-        #     x_vals, -jwm(*xsol)(x_vals, envelope_only=True), c="b", linestyle=":"
-        # )
-        axes2[0].plot(
-            x_vals, y_for_fft - jwm(*xsol)(x_vals), label="Dewiggled Spectrum", c="r",
-            linewidth=0.5,
-        )
-
-        handles, labels = axes2[0].get_legend_handles_labels()
-        order = [0,1,4,5,2,3]  # desired order of legend entries (indices into handles/labels)
-        axes2[0].legend([handles[i] for i in order], [labels[i] for i in order],
-                        fontsize=6, loc='lower center', framealpha=1.0)
-
-        axes2[0].set_ylabel("Flux, normalized (arbitrary)")
-        axes2[0].set_xlabel('Detector pixel (arbitrary offset)')
-
-        axes2[1].plot(
-            x_vals,
-            y_for_fft - ww(x_vals, *xsol),
-            label="Dewiggled spectrum minus continuum",
-            c="r",
-            linewidth=0.5,
-        )
-        axes2[1].plot(
-            x_vals,
-            spectrum_without_continuum,
-            label="Input spectrum minus continuum",
-            c="k",
-            linewidth=0.5,
-        )
-
-        ax_ylim = np.nanmax(np.abs(axes2[1].get_ylim()))
-        axes2[1].set_ylim(-ax_ylim, ax_ylim)
-
-        axes2[1].set_ylabel("Residual")
-        axes2[1].set_xlabel('Detector pixel (arbitrary offset)')
-        axes2[1].axhline(-(reduced_x2**0.5), c="0.5", linestyle="--",label='5% residual', zorder=-10)
-        axes2[1].axhline(0, c="0.5", linestyle="--", zorder=-10)
-        axes2[1].axhline(reduced_x2**0.5, c="0.5", linestyle="--", zorder=-10)
-        axes2[1].legend(fontsize=6, loc='lower center')
-
-        axes2[2].stem(
-            freq,
-            (np.abs(X_spec) / np.nanmax(np.abs(X_spec))),
-            "k",
-        )
-        axes2[2].stem(
-            freq,
-            (np.abs(X_res) / np.nanmax(np.abs(X_spec))),
-            "r",
-        )
-        axes2[2].scatter([], [], c='k', label='Input spectrum minus continuum')
-        axes2[2].scatter([], [], c='r', label='Dewiggled spectrum minus continuum')
-
-        axes2[2].set_xlim(0, freq_trim)
-        axes2[2].set_ylim(0, 1.0)
-
-        axes2[2].set_ylabel('Fourier spectrum')
-        axes2[2].set_xlabel('Frequency (1 / detector pixels)')
-
-        axes2[2].legend(fontsize=6, loc='upper right')
-        axes.set_ylabel("Flux, arbitrary")
-        axes.plot(lam, target_spectrum, label="Input Spectrum", c="k", linewidth=0.5,)
-        axes.plot(
-            lam,
-            normalization_constant * normalization * ww(med_px, *xsol),
-            label="Full Model",
-            c="g",
-            linewidth=0.5,
-        )
-        axes.plot(
-            lam,
-            normalization_constant * normalization * jwm(*xsol)(med_px),
-            label="Wiggle Model",
-            c="b",
-            linewidth=0.5,
-        )
-        axes.plot(
-            lam,
-            target_spectrum
-            - normalization_constant * normalization * jwm(*xsol)(med_px),
-            label="Dewiggled Spectrum",
-            c="r",
-            linewidth=0.5,
-        )
-        axes.legend(fontsize=6, loc='lower center', framealpha=1.0)
-        axes.set_xlabel("Wavelength (micron)")
-        try:
-            axes.set_ylim(
-                np.nanmin(
-                    (normalization_constant * normalization * jwm(*xsol)(med_px))[
-                        good_indices
-                    ]
-                ),
-                np.nanmax(target_spectrum[good_indices]),
-            )
-        except Exception:
-            axes.set_ylim(0, np.nanmax(target_spectrum[good_indices]))
-
-        # axes.set_xlim(axes[0].get_xlim())
-
-        lambda_space_xlim = (np.min(lam[good_indices]), np.max(lam[good_indices]))
-        x_space_xlim = (np.max(x_vals), np.min(x_vals))
-
-        axes.set_xlim(lambda_space_xlim)
-
-        axes2[0].set_xlim(x_space_xlim)
-        axes2[1].set_xlim(x_space_xlim)
-
-        xlim = axes2[0].get_xlim()
-        low_x = int(np.floor(xlim[0]))
-        high_x = int(np.ceil(xlim[1]))
-        axes2[0].set_xticks(np.arange(low_x, high_x, 1))
-        axes2[0].grid()
-        axes2[1].set_xticks(np.arange(low_x, high_x, 1))
-        axes2[1].grid(axis='x')
-
-        plot.savefig(fig)
-        plot.savefig(fig2)
-        plt.close(fig)
-        plt.close(fig2)
 
     return (
         0,

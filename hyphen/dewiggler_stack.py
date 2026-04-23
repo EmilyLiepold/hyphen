@@ -23,7 +23,7 @@ warnings.filterwarnings("error", message="Mean of empty slice")
 warnings.filterwarnings("error", message="invalid value encountered in scalar divide")
 
 from .tracer_helpers import find_bars, infer_fractional_position
-from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
+from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args, plot_dewiggle_result
 from .yaml_helpers import ingest_yaml
 from .helpers import ProgressParallel, get_ybounds
 from .single_dewiggle_ifu_step import (single_dewiggle_ifu_default_options,
@@ -1752,6 +1752,17 @@ def dewiggler_stack_ifu(
         _log_handler.setLevel(logging.DEBUG)
         _ds_logger = logging.getLogger("hyphen.dewiggler_stack")
         _dl_logger = logging.getLogger("hyphen.dewiggle_lambda_space")
+        # Save and remove existing handlers to prevent double logging in workers
+        _ds_handlers = list(_ds_logger.handlers)
+        _dl_handlers = list(_dl_logger.handlers)
+        _ds_propagate = _ds_logger.propagate
+        _dl_propagate = _dl_logger.propagate
+        for h in _ds_handlers:
+            _ds_logger.removeHandler(h)
+        for h in _dl_handlers:
+            _dl_logger.removeHandler(h)
+        _ds_logger.propagate = False
+        _dl_logger.propagate = False
         _ds_logger.addHandler(_log_handler)
         _dl_logger.addHandler(_log_handler)
         _ds_logger.setLevel(logging.DEBUG)
@@ -1832,7 +1843,7 @@ def dewiggler_stack_ifu(
             trace_models = list([trace_model_factory(_spaxel_world_coords[0][i], _spaxel_world_coords[1][i])])
 
             build_spaxel_map_plot_ifu(
-                plot,
+                False,
                 axis_pixel,
                 axis_slice,
                 axis_spectral,
@@ -1885,7 +1896,7 @@ def dewiggler_stack_ifu(
                         axis_spectral,
                         _sci_data[:, target_index[0], target_index[1]],
                         _dq_data[:, target_index[0], target_index[1]],
-                        plot=plot,
+                        plot=False,
                         plot_label=(
                             f'({target_index[0]},{target_index[1]}), r = {dist:.3f}", '
                             f'Slice {target_slice + 1}'
@@ -1928,12 +1939,13 @@ def dewiggler_stack_ifu(
             _ds_logger.removeHandler(_log_handler)
             _dl_logger.removeHandler(_log_handler)
             _log_handler.close()
-
-    if get_plot_status(plot):
-        logger.warning(
-            "Plotting is active, so defaulting to serial processing with n_jobs=1"
-        )
-        n_jobs = 1
+            # Restore original handlers and propagate settings
+            for h in _ds_handlers:
+                _ds_logger.addHandler(h)
+            for h in _dl_handlers:
+                _dl_logger.addHandler(h)
+            _ds_logger.propagate = _ds_propagate
+            _dl_logger.propagate = _dl_propagate
 
     xsol_fn = output_frame_filename.replace(".fits", ".pkl")
 
@@ -1950,12 +1962,76 @@ def dewiggler_stack_ifu(
 
     xsols = d.load(open(xsol_fn, "rb"))
 
-    for xindex, x in enumerate(xsols):
+    # Plot pass: generate per-spaxel diagnostic plots from saved results
+    # (runs after parallel fitting completes, or in plot-only mode)
+    if get_plot_status(plot):
+        logger.info("Plotting: regenerating diagnostic plots from saved fit results")
+        reusable_artists = None
 
-        # Emit captured worker logs into the main log
-        if len(x) > 6 and isinstance(x[6], str) and x[6]:
-            for line in x[6].splitlines():
-                logger.info(f"[worker] {line}")
+        for xindex in range(len(xsols)):
+            x = xsols[xindex]
+            target_index = x[2]
+            dist = spaxel_distance[target_index[1], target_index[0]]
+
+            # Recompute trace model for this spaxel
+            i_orig = xindex * diagnostic_fraction
+            trace_models = list([trace_model_factory(
+                _spaxel_world_coords[0][i_orig],
+                _spaxel_world_coords[1][i_orig],
+            )])
+
+            # Build spaxel map plot (unique layout per spaxel, not reusable)
+            build_spaxel_map_plot_ifu(
+                plot, axis_pixel, axis_slice, axis_spectral, image,
+                spaxel_distance, target_pixel, target_index, [0],
+                _det_image, bars, trace_models,
+                dewiggling_radius, central_reference_spectrum_radius,
+            )
+
+            model_trace = [
+                [trace_models[0][0], trace_models[0][0]],
+                [trace_models[0][0], trace_models[0][0]],
+            ]
+
+            # Reconstruct weight mask
+            if weight_based_masking_threshold is not None:
+                weight_spectrum = _wgt_data[:, target_index[0], target_index[1]]
+                median_weight = np.nanmedian(weight_spectrum[weight_spectrum > 0.0])
+                weight_based_mask = (
+                    weight_spectrum > weight_based_masking_threshold * median_weight
+                )
+            else:
+                weight_based_mask = np.ones_like(axis_spectral)
+
+            explicit_mask = np.ones_like(axis_spectral)
+            if len(masked_regions) > 0:
+                for m in masked_regions:
+                    explicit_mask[
+                        (axis_spectral >= m[0]) & (axis_spectral <= m[1])
+                    ] = 0
+            weight_based_mask = weight_based_mask * explicit_mask
+            weight_based_mask = weight_based_mask.astype(bool)
+
+            reusable_artists = plot_dewiggle_result(
+                model_trace, pf, axis_spectral,
+                _sci_data[:, target_index[0], target_index[1]],
+                _dq_data[:, target_index[0], target_index[1]],
+                saved_xsol=x[0],
+                saved_fit_params=x[1],
+                saved_reduced_x2=x[5],
+                plot=plot,
+                plot_label=f'({target_index[0]},{target_index[1]}), r = {dist:.3f}"',
+                background_pf=pf_back,
+                target_maskarray=weight_based_mask,
+                reusable_artists=reusable_artists,
+            )
+
+            if (xindex + 1) % 100 == 0:
+                logger.info(f"Plot-only: rendered {xindex + 1}/{len(xsols)} spaxels")
+
+        logger.info(f"Plot-only: rendered all {len(xsols)} spaxels")
+
+    for xindex, x in enumerate(xsols):
 
         bad_fit = False
 
@@ -2020,35 +2096,30 @@ def dewiggler_stack_ifu(
                             np.ones_like(preferred_dewiggled_spectrum) * np.nan
                         )
 
-                else:
-                    preferred_dewiggled_spectrum = (
-                        np.ones_like(preferred_dewiggled_spectrum) * np.nan
-                    )
+                logger.info(
+                    f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
+                    f"{fit_x2**0.5:.4f}."
+                    f"    and P(1) / P(3/2) = {p1 / pavg:.4f}."
+                )
+            else:
+                logger.info(
+                    f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
+                    f"{fit_x2**0.5:.4f}."
+                    f"    and P(1) / P(3/2) = {p1 / pavg:.4f}."
+                )
 
-        frame_3d[1].data[
-            :, target_index[0], target_index[1]
-        ] = preferred_dewiggled_spectrum
+            logger.info('')
+
+            frame_3d[1].data[:, target_index[0], target_index[1]] = \
+                preferred_dewiggled_spectrum
+
+    logger.info("Saving dewiggled frame")
+
+    frame_3d.writeto(output_frame_filename, overwrite=True)
 
     logger.info("Dewiggling complete!")
 
-    build_population_diagnostics(
-        plot,
-        axis_pixel,
-        axis_slice,
-        image,
-        spaxel_distance,
-        target_pixel,
-        frame_3d_shortname,
-        dewiggling_radius,
-        central_reference_spectrum_radius,
-        background_reference_spectrum_radii,
-        xsols,
-        wiggly_pixels,
-        diagnostic_fraction=diagnostic_fraction,
-    )
     close_plot(plot)
-
-    frame_3d.writeto(output_frame_filename, overwrite=True)
 
     return plot
 
@@ -2306,6 +2377,17 @@ def dewiggler_stack_msa(
         _log_handler.setLevel(logging.DEBUG)
         _ds_logger = logging.getLogger("hyphen.dewiggler_stack")
         _dl_logger = logging.getLogger("hyphen.dewiggle_lambda_space")
+        # Save and remove existing handlers to prevent double logging in workers
+        _ds_handlers = list(_ds_logger.handlers)
+        _dl_handlers = list(_dl_logger.handlers)
+        _ds_propagate = _ds_logger.propagate
+        _dl_propagate = _dl_logger.propagate
+        for h in _ds_handlers:
+            _ds_logger.removeHandler(h)
+        for h in _dl_handlers:
+            _dl_logger.removeHandler(h)
+        _ds_logger.propagate = False
+        _dl_logger.propagate = False
         _ds_logger.addHandler(_log_handler)
         _dl_logger.addHandler(_log_handler)
         _ds_logger.setLevel(logging.DEBUG)
@@ -2371,7 +2453,7 @@ def dewiggler_stack_msa(
             ]
 
             build_spaxel_map_plot_msa(
-                plot,
+                False,
                 axis_pixel,
                 axis_slice,
                 axis_spectral,
@@ -2421,7 +2503,7 @@ def dewiggler_stack_msa(
                     axis_spectral,
                     frame_3d[8 * slitlet_3d + 1].data[target_index[1], :],
                     None,
-                    plot=plot,
+                    plot=False,
                     plot_label=(
                         f'Pixel {target_index[1]}; R = {dist:.1f} px; '
                         f'Src {srcalias}'
@@ -2464,12 +2546,13 @@ def dewiggler_stack_msa(
             _ds_logger.removeHandler(_log_handler)
             _dl_logger.removeHandler(_log_handler)
             _log_handler.close()
-
-    if get_plot_status(plot):
-        logger.warning(
-            "Plotting is active, so defaulting to serial processing with n_jobs=1"
-        )
-        n_jobs = 1
+            # Restore original handlers and propagate settings
+            for h in _ds_handlers:
+                _ds_logger.addHandler(h)
+            for h in _dl_handlers:
+                _dl_logger.addHandler(h)
+            _ds_logger.propagate = _ds_propagate
+            _dl_logger.propagate = _dl_propagate
 
     xsol_fn = output_frame_filename.replace(".fits", ".pkl")
 
@@ -2486,12 +2569,75 @@ def dewiggler_stack_msa(
 
     xsols = d.load(open(xsol_fn, "rb"))
 
-    for xindex, x in enumerate(xsols):
+    # Plot pass: generate per-spaxel diagnostic plots from saved results
+    # (runs after parallel fitting completes, or in plot-only mode)
+    if get_plot_status(plot):
+        logger.info("Plotting: regenerating diagnostic plots from saved fit results")
+        reusable_artists = None
 
-        # Emit captured worker logs into the main log
-        if len(x) > 6 and isinstance(x[6], str) and x[6]:
-            for line in x[6].splitlines():
-                logger.info(f"[worker] {line}")
+        for xindex in range(len(xsols)):
+            x = xsols[xindex]
+            target_index = x[2]
+            dist = spaxel_distance[target_index[1], target_index[0]]
+
+            world_coords = frame_3d_wcs[slitlet_3d].pixel_to_world(
+                int(len(axis_spectral) / 2.), target_index[1]
+            )
+            trace_models = [
+                get_trace_model(
+                    frame_2d_wcs[slitlet_2d],
+                    world_coords[0].ra.deg,
+                    world_coords[0].dec.deg,
+                )
+            ]
+
+            build_spaxel_map_plot_msa(
+                plot, axis_pixel, axis_slice, axis_spectral, image,
+                spaxel_distance, target_pixel, target_index,
+                None,
+                frame_2d[10 * slitlet_2d + 1],
+                trace_models,
+                dewiggling_radius, central_reference_spectrum_radius,
+                srcalias,
+            )
+
+            model_trace = [
+                [trace_models[0][0], trace_models[0][0]],
+                [trace_models[0][0], trace_models[0][0]],
+            ]
+
+            weight_based_mask = np.ones_like(axis_spectral)
+            explicit_mask = np.ones_like(axis_spectral)
+            if len(masked_regions) > 0:
+                for m in masked_regions:
+                    explicit_mask[
+                        (axis_spectral >= m[0]) & (axis_spectral <= m[1])
+                    ] = 0
+            weight_based_mask = weight_based_mask * explicit_mask
+            weight_based_mask = weight_based_mask.astype(bool)
+
+            reusable_artists = plot_dewiggle_result(
+                model_trace,
+                pf,
+                axis_spectral,
+                frame_3d[8 * slitlet_3d + 1].data[target_index[1], :],
+                None,
+                saved_xsol=x[0],
+                saved_fit_params=x[1],
+                saved_reduced_x2=x[5],
+                plot=plot,
+                plot_label=f'Pixel {target_index[1]}; R = {dist:.1f} px; Src {srcalias}',
+                background_pf=pf_back,
+                target_maskarray=weight_based_mask,
+                reusable_artists=reusable_artists,
+            )
+
+            if (xindex + 1) % 100 == 0:
+                logger.info(f"Plot-only: rendered {xindex + 1}/{len(xsols)} spaxels")
+
+        logger.info(f"Plot-only: rendered all {len(xsols)} spaxels")
+
+    for xindex, x in enumerate(xsols):
 
         bad_fit = False
 
