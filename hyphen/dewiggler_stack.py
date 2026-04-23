@@ -935,7 +935,8 @@ def build_bar_map_plot(
 
     logger.info("Plotting the bars")
     fig, axes = plt.subplots(1, 1, figsize=(6, 6))
-    image_for_map = np.log10(frame_2d[1].data)
+    with np.errstate(invalid='ignore'):
+        image_for_map = np.log10(frame_2d[1].data)
     axes.imshow(
         image_for_map,
         cmap="binary",
@@ -1077,7 +1078,8 @@ def build_spaxel_map_plot_ifu(
     axes[0].set_xlabel("Index 2, Slice Axis, arcsec")
     axes[0].grid(c="r")
 
-    image_for_map = np.log10(frame_2d)
+    with np.errstate(invalid='ignore'):
+        image_for_map = np.log10(frame_2d)
 
     for tindex, ts in enumerate(target_slices):
         axes[tindex + 1].imshow(
