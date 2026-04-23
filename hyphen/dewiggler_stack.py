@@ -1736,171 +1736,198 @@ def dewiggler_stack_ifu(
 
     def dewiggle_main_loop(i: int):
 
-        target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
-        dist = spaxel_distance[target_index[1], target_index[0]]
+        # Ensure warning filters are active in child processes (loky/cloudpickle
+        # does not re-execute module-level code when reconstructing closures)
+        warnings.filterwarnings("error", message="Mean of empty slice")
+        warnings.filterwarnings("error", message="invalid value encountered in scalar divide")
 
-        logger.info("")
-        logger.info(
-            80 * "~"
-        )
-        logger.info(
-            80 * "~"
-        )
+        # Capture logs from this worker invocation
+        import io
+        _log_buffer = io.StringIO()
+        _log_handler = logging.StreamHandler(_log_buffer)
+        _log_handler.setFormatter(logging.Formatter(
+            "%(asctime)s: %(funcName)-24s | %(levelname)-8s | %(message)s",
+            datefmt="%Y-%m-%d %I:%M:%S %p",
+        ))
+        _log_handler.setLevel(logging.DEBUG)
+        _ds_logger = logging.getLogger("hyphen.dewiggler_stack")
+        _dl_logger = logging.getLogger("hyphen.dewiggle_lambda_space")
+        _ds_logger.addHandler(_log_handler)
+        _dl_logger.addHandler(_log_handler)
+        _ds_logger.setLevel(logging.DEBUG)
+        _dl_logger.setLevel(logging.DEBUG)
 
-        inner_log_msg = (
-            f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
-        )
-        start_gap = (70 - len(inner_log_msg)) // 2
-        end_gap = 70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg)
-        logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
+        try:
+            target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
+            dist = spaxel_distance[target_index[1], target_index[0]]
 
-        second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
-        start_gap = (70 - len(second_line_msg)) // 2
-        end_gap = 70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg)
-        logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
-
-        logger.info(
-            80 * "~"
-        )
-        logger.info(
-            80 * "~"
-        )
-        logger.info("")
-
-        fp = infer_fractional_position(image, target_index)
-
-        base_target_slice = int(np.floor(fp[0] * len(bars)))
-
-        target_slices = [0]
-
-        logger.debug(
-            f"This spaxel is estimated to be in slice {base_target_slice + 1} "
-            f"(fractional position {fp[0]:.2f})"
-        )
-
-        logger.debug(
-            f"For this spaxel, we will try fitting with slices"
-            f"{[t + 1 for t in target_slices]}"
-        )
-
-        if weight_based_masking_threshold is not None:
-            weight_spectrum = _wgt_data[:, target_index[0], target_index[1]]
-            median_weight = np.nanmedian(weight_spectrum[weight_spectrum > 0.0])
-            weight_based_mask = (
-                weight_spectrum > weight_based_masking_threshold * median_weight
-            )
-
-        else:
-            logger.debug("Weight-based masking is disabled.")
-            weight_based_mask = np.ones_like(axis_spectral)
-
-        explicit_mask = np.ones_like(axis_spectral)
-        if len(masked_regions) > 0:
-            logger.debug("Applying masked regions")
-            for m in masked_regions:
-                logger.info("Applying mask {m[0]}-{m[1]}")
-                explicit_mask[
-                    (axis_spectral >= m[0]) & (axis_spectral <= m[1])
-                ] = 0
-
-        weight_based_mask = weight_based_mask * explicit_mask
-        weight_based_mask = weight_based_mask.astype(bool)
-
-        # find world coordinates for the target pixel
-        trace_models = list([trace_model_factory(_spaxel_world_coords[0][i], _spaxel_world_coords[1][i])])
-
-        build_spaxel_map_plot_ifu(
-            plot,
-            axis_pixel,
-            axis_slice,
-            axis_spectral,
-            image,
-            spaxel_distance,
-            target_pixel,
-            target_index,
-            target_slices,
-            _det_image,
-            bars,
-            trace_models,
-            dewiggling_radius,
-            central_reference_spectrum_radius,
-        )
-
-        # For good measure, we'll try the de-wiggling on the slice before and after the
-        # target slice and use the best model of the three.
-
-        base_x2 = 1e10
-        preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
-        preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
-        preferred_wiggle_fft = {}
-
-        logger.debug(f"Starting the dewiggler for index {i}!")
-        for tindex, target_slice in enumerate(target_slices):
-            if base_x2**0.5 < try_different_slice_threshold:
-                continue
-
+            logger.info("")
             logger.info(
-                40 * "-~"
+                80 * "~"
             )
             logger.info(
-                f"  Current √𝜈 = {base_x2**0.5:.4f} > "
-                f"{try_different_slice_threshold:.4f}"
+                80 * "~"
             )
-            logger.info(f"  Trying trace from slice {target_slice + 1}")
+
+            inner_log_msg = (
+                f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
+            )
+            start_gap = (70 - len(inner_log_msg)) // 2
+            end_gap = 70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg)
+            logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
+
+            second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
+            start_gap = (70 - len(second_line_msg)) // 2
+            end_gap = 70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg)
+            logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
+
             logger.info(
-                40 * "-~"
+                80 * "~"
+            )
+            logger.info(
+                80 * "~"
+            )
+            logger.info("")
+
+            fp = infer_fractional_position(image, target_index)
+
+            base_target_slice = int(np.floor(fp[0] * len(bars)))
+
+            target_slices = [0]
+
+            logger.debug(
+                f"This spaxel is estimated to be in slice {base_target_slice + 1} "
+                f"(fractional position {fp[0]:.2f})"
             )
 
-            model_trace = [
-                [trace_models[tindex][0], trace_models[tindex][0]],
-                [trace_models[tindex][0], trace_models[tindex][0]],
-            ]
+            logger.debug(
+                f"For this spaxel, we will try fitting with slices"
+                f"{[t + 1 for t in target_slices]}"
+            )
 
-            wiggle_model, dewiggled_spectrum, x2, xsol, model_details, wiggle_fft = (
-                dewiggle_lambda_space(
-                    model_trace,
-                    pf,
-                    axis_spectral,
-                    _sci_data[:, target_index[0], target_index[1]],
-                    _dq_data[:, target_index[0], target_index[1]],
-                    plot=plot,
-                    plot_label=(
-                        f'({target_index[0]},{target_index[1]}), r = {dist:.3f}", '
-                        f'Slice {target_slice + 1}'
-                    ),
-                    background_pf=pf_back,
-                    min_fit_params=min_fit_params,
-                    max_fit_params=max_fit_params,
-                    sqrt_nu_improvement_threshold=(
-                        fit_param_fractional_residual_improvement_threshold
-                    ),
-                    target_maskarray=weight_based_mask,
+            if weight_based_masking_threshold is not None:
+                weight_spectrum = _wgt_data[:, target_index[0], target_index[1]]
+                median_weight = np.nanmedian(weight_spectrum[weight_spectrum > 0.0])
+                weight_based_mask = (
+                    weight_spectrum > weight_based_masking_threshold * median_weight
                 )
+
+            else:
+                logger.debug("Weight-based masking is disabled.")
+                weight_based_mask = np.ones_like(axis_spectral)
+
+            explicit_mask = np.ones_like(axis_spectral)
+            if len(masked_regions) > 0:
+                logger.debug("Applying masked regions")
+                for m in masked_regions:
+                    logger.info("Applying mask {m[0]}-{m[1]}")
+                    explicit_mask[
+                        (axis_spectral >= m[0]) & (axis_spectral <= m[1])
+                    ] = 0
+
+            weight_based_mask = weight_based_mask * explicit_mask
+            weight_based_mask = weight_based_mask.astype(bool)
+
+            # find world coordinates for the target pixel
+            trace_models = list([trace_model_factory(_spaxel_world_coords[0][i], _spaxel_world_coords[1][i])])
+
+            build_spaxel_map_plot_ifu(
+                plot,
+                axis_pixel,
+                axis_slice,
+                axis_spectral,
+                image,
+                spaxel_distance,
+                target_pixel,
+                target_index,
+                target_slices,
+                _det_image,
+                bars,
+                trace_models,
+                dewiggling_radius,
+                central_reference_spectrum_radius,
             )
 
-            logger.info(
-                40 * "-~"
-            )
-            logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {target_slice + 1}")
-            logger.info(f"  Previous best was {base_x2**0.5:.4f}")
-            logger.info(
-                40 * "-~"
-            )
+            # For good measure, we'll try the de-wiggling on the slice before and after the
+            # target slice and use the best model of the three.
 
-            if (x2 < base_x2) or (preferred_wiggle_model is None):
-                base_x2 = x2
-                preferred_wiggle_model = wiggle_model
-                preferred_dewiggled_spectrum = dewiggled_spectrum
-                preferred_wiggle_fft = wiggle_fft
+            base_x2 = 1e10
+            preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
+            preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
+            preferred_wiggle_fft = {}
 
-        return (
-            xsol,
-            model_details,
-            target_index,
-            preferred_dewiggled_spectrum,
-            preferred_wiggle_fft,
-            base_x2,
-        )
+            logger.debug(f"Starting the dewiggler for index {i}!")
+            for tindex, target_slice in enumerate(target_slices):
+                if base_x2**0.5 < try_different_slice_threshold:
+                    continue
+
+                logger.info(
+                    40 * "-~"
+                )
+                logger.info(
+                    f"  Current √𝜈 = {base_x2**0.5:.4f} > "
+                    f"{try_different_slice_threshold:.4f}"
+                )
+                logger.info(f"  Trying trace from slice {target_slice + 1}")
+                logger.info(
+                    40 * "-~"
+                )
+
+                model_trace = [
+                    [trace_models[tindex][0], trace_models[tindex][0]],
+                    [trace_models[tindex][0], trace_models[tindex][0]],
+                ]
+
+                wiggle_model, dewiggled_spectrum, x2, xsol, model_details, wiggle_fft = (
+                    dewiggle_lambda_space(
+                        model_trace,
+                        pf,
+                        axis_spectral,
+                        _sci_data[:, target_index[0], target_index[1]],
+                        _dq_data[:, target_index[0], target_index[1]],
+                        plot=plot,
+                        plot_label=(
+                            f'({target_index[0]},{target_index[1]}), r = {dist:.3f}", '
+                            f'Slice {target_slice + 1}'
+                        ),
+                        background_pf=pf_back,
+                        min_fit_params=min_fit_params,
+                        max_fit_params=max_fit_params,
+                        sqrt_nu_improvement_threshold=(
+                            fit_param_fractional_residual_improvement_threshold
+                        ),
+                        target_maskarray=weight_based_mask,
+                    )
+                )
+
+                logger.info(
+                    40 * "-~"
+                )
+                logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {target_slice + 1}")
+                logger.info(f"  Previous best was {base_x2**0.5:.4f}")
+                logger.info(
+                    40 * "-~"
+                )
+
+                if (x2 < base_x2) or (preferred_wiggle_model is None):
+                    base_x2 = x2
+                    preferred_wiggle_model = wiggle_model
+                    preferred_dewiggled_spectrum = dewiggled_spectrum
+                    preferred_wiggle_fft = wiggle_fft
+
+            return (
+                xsol,
+                model_details,
+                target_index,
+                preferred_dewiggled_spectrum,
+                preferred_wiggle_fft,
+                base_x2,
+                _log_buffer.getvalue(),
+            )
+        finally:
+            _ds_logger.removeHandler(_log_handler)
+            _dl_logger.removeHandler(_log_handler)
+            _log_handler.close()
 
     if get_plot_status(plot):
         logger.warning(
@@ -1924,6 +1951,11 @@ def dewiggler_stack_ifu(
     xsols = d.load(open(xsol_fn, "rb"))
 
     for xindex, x in enumerate(xsols):
+
+        # Emit captured worker logs into the main log
+        if len(x) > 6 and isinstance(x[6], str) and x[6]:
+            for line in x[6].splitlines():
+                logger.info(f"[worker] {line}")
 
         bad_fit = False
 
@@ -2258,153 +2290,180 @@ def dewiggler_stack_msa(
 
     def dewiggle_main_loop(i: int):
 
-        target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
-        dist = spaxel_distance[target_index[1], target_index[0]]
+        # Ensure warning filters are active in child processes (loky/cloudpickle
+        # does not re-execute module-level code when reconstructing closures)
+        warnings.filterwarnings("error", message="Mean of empty slice")
+        warnings.filterwarnings("error", message="invalid value encountered in scalar divide")
 
-        logger.info("")
-        logger.info(
-            80 * "~"
-        )
-        logger.info(
-            80 * "~"
-        )
+        # Capture logs from this worker invocation
+        import io
+        _log_buffer = io.StringIO()
+        _log_handler = logging.StreamHandler(_log_buffer)
+        _log_handler.setFormatter(logging.Formatter(
+            "%(asctime)s: %(funcName)-24s | %(levelname)-8s | %(message)s",
+            datefmt="%Y-%m-%d %I:%M:%S %p",
+        ))
+        _log_handler.setLevel(logging.DEBUG)
+        _ds_logger = logging.getLogger("hyphen.dewiggler_stack")
+        _dl_logger = logging.getLogger("hyphen.dewiggle_lambda_space")
+        _ds_logger.addHandler(_log_handler)
+        _dl_logger.addHandler(_log_handler)
+        _ds_logger.setLevel(logging.DEBUG)
+        _dl_logger.setLevel(logging.DEBUG)
 
-        inner_log_msg = (
-            f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
-        )
-        start_gap = (70 - len(inner_log_msg)) // 2
-        end_gap = 70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg)
-        logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
+        try:
+            target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
+            dist = spaxel_distance[target_index[1], target_index[0]]
 
-        second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
-        start_gap = (70 - len(second_line_msg)) // 2
-        end_gap = 70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg)
-        logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
-
-        logger.info(
-            80 * "~"
-        )
-        logger.info(
-            80 * "~"
-        )
-        logger.info("")
-
-        logger.debug("Weight-based masking is disabled.")
-        weight_based_mask = np.ones_like(axis_spectral)
-        
-        explicit_mask = np.ones_like(axis_spectral)
-        if len(masked_regions) > 0:
-            logger.debug("Applying masked regions")
-            for m in masked_regions:
-                logger.info(f"Applying mask {m[0]}-{m[1]}")
-                explicit_mask[
-                    (axis_spectral >= m[0]) & (axis_spectral <= m[1])
-                ] = 0
-
-        weight_based_mask = weight_based_mask * explicit_mask
-        weight_based_mask = weight_based_mask.astype(bool)
-
-        world_coords = frame_3d_wcs[slitlet_3d].pixel_to_world(
-            int(len(axis_spectral) / 2.), target_index[1]
-        )
-
-        trace_models = [
-            get_trace_model(
-                frame_2d_wcs[slitlet_2d],
-                world_coords[0].ra.deg,
-                world_coords[0].dec.deg
+            logger.info("")
+            logger.info(
+                80 * "~"
             )
-        ]
+            logger.info(
+                80 * "~"
+            )
 
-        build_spaxel_map_plot_msa(
-            plot,
-            axis_pixel,
-            axis_slice,
-            axis_spectral,
-            image,
-            spaxel_distance,
-            target_pixel,
-            target_index,
-            None,
-            frame_2d[10 * slitlet_2d + 1],
-            trace_models,
-            dewiggling_radius,
-            central_reference_spectrum_radius,
-            srcalias,
-        )
+            inner_log_msg = (
+                f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
+            )
+            start_gap = (70 - len(inner_log_msg)) // 2
+            end_gap = 70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg)
+            logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
 
-        base_x2 = 1e10
-        preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
-        preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
-        preferred_wiggle_fft = {}
+            second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
+            start_gap = (70 - len(second_line_msg)) // 2
+            end_gap = 70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg)
+            logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
 
-        logger.debug(f"Starting the dewiggler for index {i}!")
-        # for tindex, target_slice in enumerate(target_slices):
-        # if base_x2**0.5 < try_different_slice_threshold:
-        #     continue
+            logger.info(
+                80 * "~"
+            )
+            logger.info(
+                80 * "~"
+            )
+            logger.info("")
 
-        logger.info(
-            40 * "-~"
-        )
-        # logger.info(
-        #     f"  Current √𝜈 = {base_x2**0.5:.4f} > "
-        #     f"{try_different_slice_threshold:.4f}"
-        # )
-        logger.info(f"  Trying trace for srcalias {srcalias}")
-        logger.info(
-            40 * "-~"
-        )
+            logger.debug("Weight-based masking is disabled.")
+            weight_based_mask = np.ones_like(axis_spectral)
+            
+            explicit_mask = np.ones_like(axis_spectral)
+            if len(masked_regions) > 0:
+                logger.debug("Applying masked regions")
+                for m in masked_regions:
+                    logger.info(f"Applying mask {m[0]}-{m[1]}")
+                    explicit_mask[
+                        (axis_spectral >= m[0]) & (axis_spectral <= m[1])
+                    ] = 0
 
-        model_trace = [
-            [trace_models[0][0], trace_models[0][0]],
-            [trace_models[0][0], trace_models[0][0]],
-        ]
+            weight_based_mask = weight_based_mask * explicit_mask
+            weight_based_mask = weight_based_mask.astype(bool)
 
-        wiggle_model, dewiggled_spectrum, x2, xsol, model_details, wiggle_fft = (
-            dewiggle_lambda_space(
-                model_trace,
-                pf,
+            world_coords = frame_3d_wcs[slitlet_3d].pixel_to_world(
+                int(len(axis_spectral) / 2.), target_index[1]
+            )
+
+            trace_models = [
+                get_trace_model(
+                    frame_2d_wcs[slitlet_2d],
+                    world_coords[0].ra.deg,
+                    world_coords[0].dec.deg
+                )
+            ]
+
+            build_spaxel_map_plot_msa(
+                plot,
+                axis_pixel,
+                axis_slice,
                 axis_spectral,
-                frame_3d[8 * slitlet_3d + 1].data[target_index[1], :],
+                image,
+                spaxel_distance,
+                target_pixel,
+                target_index,
                 None,
-                plot=plot,
-                plot_label=(
-                    f'Pixel {target_index[1]}; R = {dist:.1f} px; '
-                    f'Src {srcalias}'
-                ),
-                background_pf=pf_back,
-                min_fit_params=min_fit_params,
-                max_fit_params=max_fit_params,
-                sqrt_nu_improvement_threshold=(
-                    fit_param_fractional_residual_improvement_threshold
-                ),
-                target_maskarray=weight_based_mask,
+                frame_2d[10 * slitlet_2d + 1],
+                trace_models,
+                dewiggling_radius,
+                central_reference_spectrum_radius,
+                srcalias,
             )
-        )
 
-        logger.info(
-            40 * "-~"
-        )
-        logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {slitlet_3d + 1}")
-        logger.info(f"  Previous best was {base_x2**0.5:.4f}")
-        logger.info(
-            40 * "-~"
-        )
+            base_x2 = 1e10
+            preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
+            preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
+            preferred_wiggle_fft = {}
 
-        if (x2 < base_x2) or (preferred_wiggle_model is None):
-            base_x2 = x2
-            preferred_wiggle_model = wiggle_model
-            preferred_dewiggled_spectrum = dewiggled_spectrum
-            preferred_wiggle_fft = wiggle_fft
+            logger.debug(f"Starting the dewiggler for index {i}!")
+            # for tindex, target_slice in enumerate(target_slices):
+            # if base_x2**0.5 < try_different_slice_threshold:
+            #     continue
 
-        return (
-            xsol,
-            model_details,
-            target_index,
-            preferred_dewiggled_spectrum,
-            preferred_wiggle_fft,
-            base_x2,
-        )
+            logger.info(
+                40 * "-~"
+            )
+            # logger.info(
+            #     f"  Current √𝜈 = {base_x2**0.5:.4f} > "
+            #     f"{try_different_slice_threshold:.4f}"
+            # )
+            logger.info(f"  Trying trace for srcalias {srcalias}")
+            logger.info(
+                40 * "-~"
+            )
+
+            model_trace = [
+                [trace_models[0][0], trace_models[0][0]],
+                [trace_models[0][0], trace_models[0][0]],
+            ]
+
+            wiggle_model, dewiggled_spectrum, x2, xsol, model_details, wiggle_fft = (
+                dewiggle_lambda_space(
+                    model_trace,
+                    pf,
+                    axis_spectral,
+                    frame_3d[8 * slitlet_3d + 1].data[target_index[1], :],
+                    None,
+                    plot=plot,
+                    plot_label=(
+                        f'Pixel {target_index[1]}; R = {dist:.1f} px; '
+                        f'Src {srcalias}'
+                    ),
+                    background_pf=pf_back,
+                    min_fit_params=min_fit_params,
+                    max_fit_params=max_fit_params,
+                    sqrt_nu_improvement_threshold=(
+                        fit_param_fractional_residual_improvement_threshold
+                    ),
+                    target_maskarray=weight_based_mask,
+                )
+            )
+
+            logger.info(
+                40 * "-~"
+            )
+            logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {slitlet_3d + 1}")
+            logger.info(f"  Previous best was {base_x2**0.5:.4f}")
+            logger.info(
+                40 * "-~"
+            )
+
+            if (x2 < base_x2) or (preferred_wiggle_model is None):
+                base_x2 = x2
+                preferred_wiggle_model = wiggle_model
+                preferred_dewiggled_spectrum = dewiggled_spectrum
+                preferred_wiggle_fft = wiggle_fft
+
+            return (
+                xsol,
+                model_details,
+                target_index,
+                preferred_dewiggled_spectrum,
+                preferred_wiggle_fft,
+                base_x2,
+                _log_buffer.getvalue(),
+            )
+        finally:
+            _ds_logger.removeHandler(_log_handler)
+            _dl_logger.removeHandler(_log_handler)
+            _log_handler.close()
 
     if get_plot_status(plot):
         logger.warning(
@@ -2428,6 +2487,11 @@ def dewiggler_stack_msa(
     xsols = d.load(open(xsol_fn, "rb"))
 
     for xindex, x in enumerate(xsols):
+
+        # Emit captured worker logs into the main log
+        if len(x) > 6 and isinstance(x[6], str) and x[6]:
+            for line in x[6].splitlines():
+                logger.info(f"[worker] {line}")
 
         bad_fit = False
 
