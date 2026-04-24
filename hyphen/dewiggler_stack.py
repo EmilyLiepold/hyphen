@@ -14,10 +14,87 @@ from stdatamodels.jwst.datamodels import IFUImageModel
 from stdatamodels.jwst.datamodels import MultiSlitModel
 from joblib import delayed
 import dill as d
+import json
+import pickle
 from typing import Callable, Optional
 from functools import partial
 import warnings
 from jwst import datamodels
+
+# In-memory WCS cache to avoid repeated loading across batch iterations
+_wcs_cache: dict[tuple[str, str], tuple] = {}
+
+
+def _save_fit_results(xsols: list, base_filename: str) -> None:
+    """Save fit results to compressed npz + json for fast I/O."""
+    npz_filename = base_filename + ".npz"
+    json_filename = base_filename + ".json"
+
+    n = len(xsols)
+    xsols_array = np.array([x[0] for x in xsols])
+    target_indices = np.array([x[2] for x in xsols])
+    dewiggled_spectra = np.array([x[3] for x in xsols])
+    base_x2s = np.array([x[5] for x in xsols])
+
+    # FFT components
+    fft_freqs = np.array([x[4].get("freq", np.array([])) for x in xsols])
+    fft_spectra = np.array([x[4].get("spectrum_fft", np.array([])) for x in xsols])
+    fft_residuals = np.array([x[4].get("residual_fft", np.array([])) for x in xsols])
+
+    np.savez_compressed(
+        npz_filename,
+        xsols=xsols_array,
+        target_indices=target_indices,
+        dewiggled_spectra=dewiggled_spectra,
+        base_x2s=base_x2s,
+        fft_freqs=fft_freqs,
+        fft_spectra=fft_spectra,
+        fft_residuals=fft_residuals,
+    )
+
+    # Metadata (dicts, strings) in JSON
+    metadata = {
+        "n": n,
+        "model_details": [x[1] for x in xsols],
+        "log_strings": [x[6] for x in xsols],
+    }
+    with open(json_filename, "w") as f:
+        json.dump(metadata, f)
+
+
+def _load_fit_results(base_filename: str) -> list:
+    """Load fit results from compressed npz + json."""
+    npz_filename = base_filename + ".npz"
+    json_filename = base_filename + ".json"
+
+    data = np.load(npz_filename)
+    with open(json_filename, "r") as f:
+        metadata = json.load(f)
+
+    n = metadata["n"]
+    model_details = metadata["model_details"]
+    log_strings = metadata["log_strings"]
+
+    xsols = []
+    for i in range(n):
+        wiggle_fft = {
+            "freq": data["fft_freqs"][i],
+            "spectrum_fft": data["fft_spectra"][i],
+            "residual_fft": data["fft_residuals"][i],
+        }
+        xsols.append((
+            data["xsols"][i],
+            model_details[i],
+            data["target_indices"][i].tolist(),
+            data["dewiggled_spectra"][i],
+            wiggle_fft,
+            float(data["base_x2s"][i]),
+            log_strings[i],
+        ))
+
+    data.close()
+    return xsols
+
 
 warnings.filterwarnings("error", message="Mean of empty slice")
 warnings.filterwarnings("error", message="invalid value encountered in scalar divide")
@@ -76,6 +153,11 @@ def get_wcs_ifu(
         the 3D frame, and the IFUImageModel (must be kept alive by the caller so the
         underlying ASDF file handle is not garbage-collected).
     """
+    cache_key = (fn_2d, fn_3d)
+    if cache_key in _wcs_cache:
+        logger.info("Using cached WCS")
+        return _wcs_cache[cache_key]
+
     logger.info("Loading global IFU WCS from IFUImageModel")
     ifu_model = IFUImageModel(fn_2d)
     frame_2d_wcs = ifu_model.meta.wcs
@@ -84,7 +166,9 @@ def get_wcs_ifu(
     cube_model = datamodels.open(fn_3d)
     frame_3d_wcs = cube_model.meta.wcs
 
-    return frame_2d_wcs, frame_3d_wcs, ifu_model, cube_model
+    result = (frame_2d_wcs, frame_3d_wcs, ifu_model, cube_model)
+    _wcs_cache[cache_key] = result
+    return result
 
 
 def get_wcs_msa(
@@ -107,6 +191,11 @@ def get_wcs_msa(
         the WCS for each slit in the for the 3D frame
     """
 
+    cache_key = (fn_2d, fn_3d)
+    if cache_key in _wcs_cache:
+        logger.info("Using cached WCS")
+        return _wcs_cache[cache_key]
+
     logger.info("Computing WCS for the slices in the 2D frame")
 
     frame_2d_model = MultiSlitModel(fn_2d)
@@ -119,7 +208,9 @@ def get_wcs_msa(
     n_slits = len(frame_3d_model.slits)
     frame_3d_wcs = [frame_3d_model.slits[i].meta.wcs for i in range(n_slits)]
 
-    return frame_2d_wcs, frame_3d_wcs, frame_2d_model, frame_3d_model
+    result = (frame_2d_wcs, frame_3d_wcs, frame_2d_model, frame_3d_model)
+    _wcs_cache[cache_key] = result
+    return result
 
 
 def determine_detector_name(frame_2d: HDUList) -> str:
@@ -1960,9 +2051,10 @@ def dewiggler_stack_ifu(
             delayed(dewiggle_main_loop)(i)
             for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
         )
-        d.dump(xsols, open(xsol_fn, "wb"))
-
-    xsols = d.load(open(xsol_fn, "rb"))
+        if get_plot_status(plot):
+            _save_fit_results(xsols, xsol_fn)
+    else:
+        xsols = _load_fit_results(xsol_fn)
 
     # Plot pass: generate per-spaxel diagnostic plots from saved results
     # (runs after parallel fitting completes, or in plot-only mode)
@@ -2567,9 +2659,10 @@ def dewiggler_stack_msa(
             delayed(dewiggle_main_loop)(i)
             for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
         )
-        d.dump(xsols, open(xsol_fn, "wb"))
-
-    xsols = d.load(open(xsol_fn, "rb"))
+        if get_plot_status(plot):
+            _save_fit_results(xsols, xsol_fn)
+    else:
+        xsols = _load_fit_results(xsol_fn)
 
     # Plot pass: generate per-spaxel diagnostic plots from saved results
     # (runs after parallel fitting completes, or in plot-only mode)
