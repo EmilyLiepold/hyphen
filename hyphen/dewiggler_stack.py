@@ -98,6 +98,24 @@ def _load_fit_results(base_filename: str) -> list:
     return xsols
 
 
+def _flush_spaxel_logs(xsols: list) -> None:
+    """Write captured per-spaxel fit logs into the root logger's file stream."""
+    root_handlers = [
+        h for h in logging.getLogger().handlers
+        if isinstance(h, logging.FileHandler)
+    ]
+    if not root_handlers:
+        return
+    stream = root_handlers[0].stream
+    for x in xsols:
+        log_text = x[6]
+        if log_text:
+            stream.write(log_text)
+            if not log_text.endswith("\n"):
+                stream.write("\n")
+    stream.flush()
+
+
 warnings.filterwarnings("error", message="Mean of empty slice")
 warnings.filterwarnings("error", message="invalid value encountered in scalar divide")
 
@@ -1844,7 +1862,7 @@ def dewiggler_stack_ifu(
             "%(asctime)s: %(funcName)-24s | %(levelname)-8s | %(message)s",
             datefmt="%Y-%m-%d %I:%M:%S %p",
         ))
-        _log_handler.setLevel(logging.DEBUG)
+        _log_handler.setLevel(logging.INFO)
         _ds_logger = logging.getLogger("hyphen.dewiggler_stack")
         _dl_logger = logging.getLogger("hyphen.dewiggle_lambda_space")
         # Save and remove existing handlers to prevent double logging in workers
@@ -1860,8 +1878,8 @@ def dewiggler_stack_ifu(
         _dl_logger.propagate = False
         _ds_logger.addHandler(_log_handler)
         _dl_logger.addHandler(_log_handler)
-        _ds_logger.setLevel(logging.DEBUG)
-        _dl_logger.setLevel(logging.DEBUG)
+        _ds_logger.setLevel(logging.INFO)
+        _dl_logger.setLevel(logging.INFO)
 
         try:
             target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
@@ -2057,6 +2075,8 @@ def dewiggler_stack_ifu(
             _save_fit_results(xsols, xsol_fn)
     else:
         xsols = _load_fit_results(xsol_fn)
+
+    _flush_spaxel_logs(xsols)
 
     # Plot pass: generate per-spaxel diagnostic plots from saved results
     # (runs after parallel fitting completes, or in plot-only mode)
@@ -2470,7 +2490,7 @@ def dewiggler_stack_msa(
             "%(asctime)s: %(funcName)-24s | %(levelname)-8s | %(message)s",
             datefmt="%Y-%m-%d %I:%M:%S %p",
         ))
-        _log_handler.setLevel(logging.DEBUG)
+        _log_handler.setLevel(logging.INFO)
         _ds_logger = logging.getLogger("hyphen.dewiggler_stack")
         _dl_logger = logging.getLogger("hyphen.dewiggle_lambda_space")
         # Save and remove existing handlers to prevent double logging in workers
@@ -2486,8 +2506,8 @@ def dewiggler_stack_msa(
         _dl_logger.propagate = False
         _ds_logger.addHandler(_log_handler)
         _dl_logger.addHandler(_log_handler)
-        _ds_logger.setLevel(logging.DEBUG)
-        _dl_logger.setLevel(logging.DEBUG)
+        _ds_logger.setLevel(logging.INFO)
+        _dl_logger.setLevel(logging.INFO)
 
         try:
             target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
@@ -2665,6 +2685,8 @@ def dewiggler_stack_msa(
             _save_fit_results(xsols, xsol_fn)
     else:
         xsols = _load_fit_results(xsol_fn)
+
+    _flush_spaxel_logs(xsols)
 
     # Plot pass: generate per-spaxel diagnostic plots from saved results
     # (runs after parallel fitting completes, or in plot-only mode)
