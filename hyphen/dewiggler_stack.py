@@ -31,15 +31,17 @@ def _save_fit_results(xsols: list, base_filename: str) -> None:
     json_filename = base_filename + ".json"
 
     n = len(xsols)
-    xsols_array = np.array([x[0] for x in xsols])
+    # Use dtype=object because fit escalation means xsol arrays have different
+    # lengths across spaxels. FFT arrays can also vary in length.
+    xsols_array = np.array([x[0] for x in xsols], dtype=object)
     target_indices = np.array([x[2] for x in xsols])
     dewiggled_spectra = np.array([x[3] for x in xsols])
     base_x2s = np.array([x[5] for x in xsols])
 
     # FFT components
-    fft_freqs = np.array([x[4].get("freq", np.array([])) for x in xsols])
-    fft_spectra = np.array([x[4].get("spectrum_fft", np.array([])) for x in xsols])
-    fft_residuals = np.array([x[4].get("residual_fft", np.array([])) for x in xsols])
+    fft_freqs = np.array([x[4].get("freq", np.array([])) for x in xsols], dtype=object)
+    fft_spectra = np.array([x[4].get("spectrum_fft", np.array([])) for x in xsols], dtype=object)
+    fft_residuals = np.array([x[4].get("residual_fft", np.array([])) for x in xsols], dtype=object)
 
     np.savez_compressed(
         npz_filename,
@@ -67,7 +69,7 @@ def _load_fit_results(base_filename: str) -> list:
     npz_filename = base_filename + ".npz"
     json_filename = base_filename + ".json"
 
-    data = np.load(npz_filename)
+    data = np.load(npz_filename, allow_pickle=True)
     with open(json_filename, "r") as f:
         metadata = json.load(f)
 
