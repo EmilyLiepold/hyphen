@@ -1833,6 +1833,11 @@ def dewiggler_stack_ifu(
         (~np.isnan(image)) * (spaxel_distance.T < dewiggling_radius)
     )
 
+    distances = spaxel_distance[wiggly_pixels].flatten()
+    wiggly_pixels = np.asarray(wiggly_pixels)
+    wiggly_pixels = wiggly_pixels[:,np.argsort(distances)]
+    del distances
+
     if len(target_wiggle_pixels) > 0:
         wiggly_pixels = np.asarray(target_wiggle_pixels).T
 
@@ -2029,6 +2034,12 @@ def dewiggler_stack_ifu(
                 )
                 logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {target_slice + 1}")
                 logger.info(f"  Previous best was {base_x2**0.5:.4f}")
+                logger.info(f"Current fit orders are (O, 𝛼, 𝛽, 𝛾) = ({model_details['order']}, "
+                    f"{model_details['alpha_order']}, {model_details['beta_order']}, "
+                    f"{model_details['gamma_order']})"
+                )
+                if model_details['order'] == 0:
+                    logger.info("  No wiggle terms were used in this fit.")
                 logger.info(
                     40 * "-~"
                 )
