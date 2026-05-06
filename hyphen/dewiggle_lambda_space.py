@@ -509,6 +509,7 @@ def plot_dewiggle_result(
 
         axes2[0].set_ylabel("Flux, normalized (arbitrary)")
         axes2[0].set_xlabel('Detector pixel (arbitrary offset)')
+        axes2[0].set_ylim(-0.3, 1.5)
 
         res_dewiggled, = axes2[1].plot(
             x_vals,
