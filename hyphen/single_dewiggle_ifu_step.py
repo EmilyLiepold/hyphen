@@ -13,6 +13,7 @@ single_dewiggle_ifu_default_options = {
     "background_reference_spectrum_radii": [1.0, 1.5],
     "fractional_residual_threshold": 0.05,
     "fit_param_fractional_residual_improvement_threshold": 0.0001,
+    "null_fit_improvement_threshold": 0.005,
     "n_jobs": 1,
     "perform_dewiggling": True,
     "target_radec": (0.0, 0.0),

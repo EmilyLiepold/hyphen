@@ -24,6 +24,7 @@ from jwst import datamodels
 # In-memory WCS cache to avoid repeated loading across batch iterations
 _wcs_cache: dict[tuple[str, str], tuple] = {}
 
+np.random.seed(67)
 
 def _save_fit_results(xsols: list, base_filename: str) -> None:
     """Save fit results to compressed npz + json for fast I/O."""
@@ -37,6 +38,7 @@ def _save_fit_results(xsols: list, base_filename: str) -> None:
     target_indices = np.array([x[2] for x in xsols])
     dewiggled_spectra = np.array([x[3] for x in xsols])
     base_x2s = np.array([x[5] for x in xsols])
+    preferred_target_slices = np.array([x[7] for x in xsols])
 
     # FFT components
     fft_freqs = np.array([x[4].get("freq", np.array([])) for x in xsols], dtype=object)
@@ -52,6 +54,7 @@ def _save_fit_results(xsols: list, base_filename: str) -> None:
         fft_freqs=fft_freqs,
         fft_spectra=fft_spectra,
         fft_residuals=fft_residuals,
+        target_slices=preferred_target_slices,
     )
 
     # Metadata (dicts, strings) in JSON
@@ -92,6 +95,7 @@ def _load_fit_results(base_filename: str) -> list:
             wiggle_fft,
             float(data["base_x2s"][i]),
             log_strings[i],
+            data['target_slices'][i]
         ))
 
     data.close()
@@ -1658,6 +1662,8 @@ def dewiggler_stack_ifu(
     fft_order_width=0.1,
     power_ratio_threshold=3.0,
     masked_regions: list = [],
+    null_fit_improvement_threshold=0.005,
+    px_per_slice: int = 2,
 ) -> object:
     """
     :type slices_to_use: list
@@ -1712,6 +1718,9 @@ def dewiggler_stack_ifu(
     :param weight_based_masking_threshold: Perform a masking of the spectra based on
         the weights. If the weight is below this fraction of the median weight, the
         pixel will be masked.
+    :param px_per_slice: The number of pixels along the slice axis per slice.
+        E.g., when using a 0.05'' plate scale and the native slice size is 0.1''
+        px_per_slice = 2.
     :return: The plot object containing all diagnostics.
     """
 
@@ -1833,7 +1842,7 @@ def dewiggler_stack_ifu(
         (~np.isnan(image)) * (spaxel_distance.T < dewiggling_radius)
     )
 
-    distances = spaxel_distance[wiggly_pixels].flatten()
+    distances = spaxel_distance.T[wiggly_pixels].flatten()
     wiggly_pixels = np.asarray(wiggly_pixels)
     wiggly_pixels = wiggly_pixels[:,np.argsort(distances)]
     del distances
@@ -1848,10 +1857,12 @@ def dewiggler_stack_ifu(
     if diagnostic_fraction != 1:
         logger.info(f"Only dewiggling every {diagnostic_fraction}th pixel")
 
-    _spaxel_world_coords = frame_3d_wcs.pixel_to_world_values(
-        wiggly_pixels[1], wiggly_pixels[0], np.full(len(wiggly_pixels[0]), 1000)
-    )
 
+    _spaxel_world_coords = [frame_3d_wcs.pixel_to_world_values(
+        wiggly_pixels[1], wiggly_pixels[0] + px_per_slice * stu, np.full(len(wiggly_pixels[0]), 1000)
+    ) for stu in slices_to_use]
+
+    # print(_spaxel_world_coords)
     def dewiggle_main_loop(i: int):
 
         # Ensure warning filters are active in child processes (loky/cloudpickle
@@ -1922,7 +1933,7 @@ def dewiggler_stack_ifu(
 
             base_target_slice = int(np.floor(fp[0] * len(bars)))
 
-            target_slices = [0]
+            # target_slices = [0]
 
             logger.debug(
                 f"This spaxel is estimated to be in slice {base_target_slice + 1} "
@@ -1931,7 +1942,7 @@ def dewiggler_stack_ifu(
 
             logger.debug(
                 f"For this spaxel, we will try fitting with slices"
-                f"{[t + 1 for t in target_slices]}"
+                f"{[base_target_slice + 1 + t for t in slices_to_use]}"
             )
 
             if weight_based_masking_threshold is not None:
@@ -1958,7 +1969,7 @@ def dewiggler_stack_ifu(
             weight_based_mask = weight_based_mask.astype(bool)
 
             # find world coordinates for the target pixel
-            trace_models = list([trace_model_factory(_spaxel_world_coords[0][i], _spaxel_world_coords[1][i])])
+            trace_models = list([trace_model_factory(_spaxel_world_coords[ii][0][i], _spaxel_world_coords[ii][1][i]) for ii in range(len(_spaxel_world_coords))])
 
             build_spaxel_map_plot_ifu(
                 False,
@@ -1969,7 +1980,7 @@ def dewiggler_stack_ifu(
                 spaxel_distance,
                 target_pixel,
                 target_index,
-                target_slices,
+                [0],
                 _det_image,
                 bars,
                 trace_models,
@@ -1984,9 +1995,13 @@ def dewiggler_stack_ifu(
             preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
             preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
             preferred_wiggle_fft = {}
+            preferred_target_slice = 0
+            preferred_xsol = None
+            preferred_model_details = None
+
 
             logger.debug(f"Starting the dewiggler for index {i}!")
-            for tindex, target_slice in enumerate(target_slices):
+            for tindex, target_slice in enumerate(slices_to_use):
                 if base_x2**0.5 < try_different_slice_threshold:
                     continue
 
@@ -1997,7 +2012,7 @@ def dewiggler_stack_ifu(
                     f"  Current √𝜈 = {base_x2**0.5:.4f} > "
                     f"{try_different_slice_threshold:.4f}"
                 )
-                logger.info(f"  Trying trace from slice {target_slice + 1}")
+                logger.info(f"  Trying trace from slice {target_slice}")
                 logger.info(
                     40 * "-~"
                 )
@@ -2007,6 +2022,36 @@ def dewiggler_stack_ifu(
                     [trace_models[tindex][0], trace_models[tindex][0]],
                 ]
 
+                ## first, build a null model which boosts the base frequency by sqrt(2)
+
+                logger.info("  Fitting null model with f = sqrt(2)")
+
+                null_wiggle_model, null_dewiggled_spectrum, null_x2, null_xsol, null_model_details, null_wiggle_fft = (
+                    dewiggle_lambda_space(
+                        model_trace,
+                        pf,
+                        axis_spectral,
+                        _sci_data[:, target_index[0], target_index[1]],
+                        _dq_data[:, target_index[0], target_index[1]],
+                        plot=False,
+                        plot_label=(
+                            f'({target_index[0]},{target_index[1]}), r = {dist:.3f}", '
+                            f'Slice {target_slice}'
+                        ),
+                        background_pf=pf_back,
+                        min_fit_params=min_fit_params,
+                        max_fit_params=max_fit_params,
+                        sqrt_nu_improvement_threshold=(
+                            fit_param_fractional_residual_improvement_threshold
+                        ),
+                        target_maskarray=weight_based_mask,
+                        frequency_fudge=2**0.5,
+                    )
+                )
+
+                logger.info(f" Found √𝜈 = {null_x2**0.5:.4f} with null model (f = sqrt(2))")
+
+                logger.info("  Now fitting with f = 1")
                 wiggle_model, dewiggled_spectrum, x2, xsol, model_details, wiggle_fft = (
                     dewiggle_lambda_space(
                         model_trace,
@@ -2017,7 +2062,7 @@ def dewiggler_stack_ifu(
                         plot=False,
                         plot_label=(
                             f'({target_index[0]},{target_index[1]}), r = {dist:.3f}", '
-                            f'Slice {target_slice + 1}'
+                            f'Slice {target_slice}'
                         ),
                         background_pf=pf_back,
                         min_fit_params=min_fit_params,
@@ -2032,7 +2077,7 @@ def dewiggler_stack_ifu(
                 logger.info(
                     40 * "-~"
                 )
-                logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {target_slice + 1}")
+                logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {target_slice}")
                 logger.info(f"  Previous best was {base_x2**0.5:.4f}")
                 logger.info(f"Current fit orders are (O, 𝛼, 𝛽, 𝛾) = ({model_details['order']}, "
                     f"{model_details['alpha_order']}, {model_details['beta_order']}, "
@@ -2043,21 +2088,31 @@ def dewiggler_stack_ifu(
                 logger.info(
                     40 * "-~"
                 )
+                improved_over_null = ((null_x2**0.5 - x2**0.5) > null_fit_improvement_threshold)
 
-                if (x2 < base_x2) or (preferred_wiggle_model is None):
+                logger.info(f"  Fit with f=1 is {'better' if improved_over_null else 'not better'} than null model by more than {null_fit_improvement_threshold:.4f} in √𝜈 improvement")
+                logger.info(f"  {'Accepting' if improved_over_null else 'Rejecting'} this fit based on null model comparison")
+
+                if ((x2 < base_x2) or (preferred_wiggle_model is None)) and improved_over_null:
                     base_x2 = x2
                     preferred_wiggle_model = wiggle_model
                     preferred_dewiggled_spectrum = dewiggled_spectrum
                     preferred_wiggle_fft = wiggle_fft
+                    preferred_target_slice = target_slice
+                    preferred_xsol = xsol
+                    preferred_model_details = model_details
 
+                else:
+                    preferred_dewiggled_spectrum = _sci_data[:, target_index[0], target_index[1]]
             return (
-                xsol,
-                model_details,
+                preferred_xsol,
+                preferred_model_details,
                 target_index,
                 preferred_dewiggled_spectrum,
                 preferred_wiggle_fft,
                 base_x2,
                 _log_buffer.getvalue(),
+                preferred_target_slice,
             )
         finally:
             _ds_logger.removeHandler(_log_handler)
@@ -2099,12 +2154,14 @@ def dewiggler_stack_ifu(
             x = xsols[xindex]
             target_index = x[2]
             dist = spaxel_distance[target_index[1], target_index[0]]
+            preferred_slice = x[7]
+            preferred_slice_index = slices_to_use.index(preferred_slice)
 
             # Recompute trace model for this spaxel
             i_orig = xindex * diagnostic_fraction
             trace_models = list([trace_model_factory(
-                _spaxel_world_coords[0][i_orig],
-                _spaxel_world_coords[1][i_orig],
+                _spaxel_world_coords[preferred_slice_index][0][i_orig],
+                _spaxel_world_coords[preferred_slice_index][1][i_orig],
             )])
 
             # Build spaxel map plot (unique layout per spaxel, not reusable)
@@ -2956,6 +3013,7 @@ def parse_yaml_arguments_and_dewiggle_ifu(getter):
                     "reference_spectra_percentile_cut"
                 ),
                 try_different_slice_threshold=getter("try_different_slice_threshold"),
+                null_fit_improvement_threshold=getter("null_fit_improvement_threshold"),
             )
 
     return 0

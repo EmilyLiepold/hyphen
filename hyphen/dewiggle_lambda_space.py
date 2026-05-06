@@ -1050,6 +1050,7 @@ def dewiggle_lambda_space(
     min_fit_params={"alpha_order": 0, "beta_order": 3, "gamma_order": 0, "order": 3},
     max_fit_params={"alpha_order": 0, "beta_order": 3, "gamma_order": 0, "order": 3},
     sqrt_nu_improvement_threshold=0.0001,
+    frequency_fudge=1.0,
 ):
     """
     Given a trace_model and a target_spectrum, dewiggle the target_spectrum by
@@ -1102,7 +1103,7 @@ def dewiggle_lambda_space(
     if target_maskarray is not None:
         good_indices = good_indices * target_maskarray
 
-    med_px = trace_model[0][0](lam)
+    med_px = trace_model[0][0](lam) * frequency_fudge
     med_px -= np.nanmedian(med_px)
     inverse_model = partial(
         np.interp,
@@ -1405,7 +1406,7 @@ def dewiggle_lambda_space(
                 'ps_continuum': ps_continuum, 'gal_continuum': gal_continuum,
                 'spectrum_without_continuum': spectrum_without_continuum,
                 'freq': freq, 'X_spec': X_spec, 'X_res': X_res,
-            },
+            }
         )
 
     return (
