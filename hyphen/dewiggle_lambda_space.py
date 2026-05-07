@@ -308,7 +308,15 @@ def plot_dewiggle_result(
             y_for_fft - ps_continuum - gal_continuum - jwm(*xsol)(x_vals)
         )
 
-        fine_x_grid = np.linspace(np.min(x_vals), np.max(x_vals), 20 * len(x_vals))
+        _fft_freq_step = 0.01
+        _fft_period = 1.0 / _fft_freq_step
+        _span = np.max(x_vals) - np.min(x_vals)
+        _dt_nominal = _span / (100 * len(x_vals) - 1)
+        _n_per_period = max(1, round(_fft_period / _dt_nominal))
+        _n_fft = int(np.ceil(100 * len(x_vals) / _n_per_period)) * _n_per_period
+        _dt_fft = _fft_period / _n_per_period
+        fine_x_grid = np.linspace(np.min(x_vals), np.min(x_vals) + _n_fft * _dt_fft, _n_fft + 1)
+
         fine_grid_y_spec = np.interp(
             fine_x_grid,
             x_vals[np.argsort(x_vals)],
@@ -457,17 +465,14 @@ def plot_dewiggle_result(
             linewidth=0.5,
             
         )
+        gamma_0_idx = saved_fit_params["alpha_order"] + 1
         det_bg_cont, = axes2[0].plot(
             x_vals,
             gal_continuum,
-            # xsol[-1]
-            # * np.polyval(background_pf, inverse_model(X_vals))
-            # / np.polyval(continuum_model, inverse_model(X_vals)),
-            label=f"Background component: gamma={xsol[1]:.2f}",
+            label=f"Background component: gamma={xsol[gamma_0_idx]:.2f}",
             c="0.5",
             linestyle="dashed",
             linewidth=0.5,
-            
         )
         det_wiggle, = axes2[0].plot(
             x_vals,
@@ -651,8 +656,9 @@ def plot_dewiggle_result(
         reusable_artists['det_ps_cont'].set_label(
             f"Central component: alpha={xsol[0]:.2f}"
         )
+        gamma_0_idx = saved_fit_params["alpha_order"] + 1
         reusable_artists['det_bg_cont'].set_label(
-            f"Background component: gamma={xsol[1]:.2f}"
+            f"Background component: gamma={xsol[gamma_0_idx]:.2f}"
         )
         reusable_artists['det_wiggle'].set_label(
             f"Wiggle Model\nl=({envelope_args_str})"
@@ -1364,7 +1370,14 @@ def dewiggle_lambda_space(
         y_for_fft - ps_continuum - gal_continuum - jwm(*xsol)(x_vals)
     )
 
-    fine_x_grid = np.linspace(np.min(x_vals), np.max(x_vals), 20 * len(x_vals))
+    _fft_freq_step = 0.01
+    _fft_period = 1.0 / _fft_freq_step
+    _span = np.max(x_vals) - np.min(x_vals)
+    _dt_nominal = _span / (100 * len(x_vals) - 1)
+    _n_per_period = max(1, round(_fft_period / _dt_nominal))
+    _n_fft = int(np.ceil(100 * len(x_vals) / _n_per_period)) * _n_per_period
+    _dt_fft = _fft_period / _n_per_period
+    fine_x_grid = np.linspace(np.min(x_vals), np.min(x_vals) + _n_fft * _dt_fft, _n_fft + 1)
 
     fine_grid_y_spec = np.interp(
         fine_x_grid,
