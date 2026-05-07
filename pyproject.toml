@@ -17,6 +17,7 @@ dependencies = [
     "joblib", 
     "dill",
     "tqdm",
+    "pypdf",
 ]
 authors = [
     {name = "Emily Liepold", email = "emilyliepold@berkeley.edu"}

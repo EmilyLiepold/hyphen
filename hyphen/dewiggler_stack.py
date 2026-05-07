@@ -21,6 +21,7 @@ from functools import partial
 import warnings
 import tempfile
 import subprocess
+import shutil
 import os
 from jwst import datamodels
 
@@ -2469,7 +2470,7 @@ def dewiggler_stack_ifu(
                 merger.append(chunk_path)
             merger.write(merged_tmp)
             merger.close()
-            os.replace(merged_tmp, final_path)
+            shutil.move(merged_tmp, final_path)
 
             logger.info(f"Merged {len(chunk_pdfs)} chunk PDFs into {final_path}")
 
