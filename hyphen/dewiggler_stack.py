@@ -1932,6 +1932,17 @@ def dewiggler_stack_ifu(
 
     plot = initialize_plot(plot)
 
+    _general_figures_tmp = None
+    if get_plot_status(plot):
+        _general_figures_tmp_file = tempfile.NamedTemporaryFile(
+            suffix=".pdf", delete=False
+        )
+        _general_figures_tmp_file.close()
+        _general_figures_tmp = _general_figures_tmp_file.name
+        _general_plot = PdfPages(_general_figures_tmp)
+    else:
+        _general_plot = plot
+
     logger.info("Constructing a median image")
 
     image = determine_image(frame_3d)
@@ -1991,7 +2002,7 @@ def dewiggler_stack_ifu(
     )
 
     build_reference_spectra_plot(
-        plot,
+        _general_plot,
         axis_spectral,
         central_reference_spectrum,
         smoothed_reference_spectrum,
@@ -2012,7 +2023,7 @@ def dewiggler_stack_ifu(
     if len(bars) != 30:
         logger.error(f"Found {len(bars)} bars. This number should be 30...")
 
-    build_bar_map_plot(plot, frame_2d, bars, frame_2d_shortname, detector)
+    build_bar_map_plot(_general_plot, frame_2d, bars, frame_2d_shortname, detector)
 
     _sci_data = np.array(frame_3d[1].data)
     _dq_data  = np.array(frame_3d[3].data)
@@ -2450,13 +2461,9 @@ def dewiggler_stack_ifu(
                 key=lambda p: int(os.path.basename(p).split("_")[1].split(".")[0])
             )
 
-            if isinstance(plot, str):
-                final_path = plot
-                general_figures_path = None
-            else:
-                final_path = plot._file.fh.name
-                general_figures_path = final_path
+            final_path = plot._file.fh.name
 
+            _general_plot.close()
             if isinstance(plot, PdfPages):
                 plot.close()
 
@@ -2464,12 +2471,14 @@ def dewiggler_stack_ifu(
 
             merged_tmp = os.path.join(tmpdir, "merged_final.pdf")
             merger = PdfWriter()
-            if general_figures_path is not None:
-                merger.append(general_figures_path)
+            if _general_figures_tmp is not None:
+                merger.append(_general_figures_tmp)
             for chunk_path in chunk_pdfs:
                 merger.append(chunk_path)
             merger.write(merged_tmp)
             merger.close()
+            if _general_figures_tmp is not None:
+                os.unlink(_general_figures_tmp)
             shutil.move(merged_tmp, final_path)
 
             logger.info(f"Merged {len(chunk_pdfs)} chunk PDFs into {final_path}")
