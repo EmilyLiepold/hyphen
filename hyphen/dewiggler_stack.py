@@ -2451,19 +2451,25 @@ def dewiggler_stack_ifu(
 
             if isinstance(plot, str):
                 final_path = plot
+                general_figures_path = None
             else:
                 final_path = plot._file.fh.name
+                general_figures_path = final_path
 
             if isinstance(plot, PdfPages):
                 plot.close()
 
             from pypdf import PdfWriter
 
+            merged_tmp = os.path.join(tmpdir, "merged_final.pdf")
             merger = PdfWriter()
+            if general_figures_path is not None:
+                merger.append(general_figures_path)
             for chunk_path in chunk_pdfs:
                 merger.append(chunk_path)
-            merger.write(final_path)
+            merger.write(merged_tmp)
             merger.close()
+            os.replace(merged_tmp, final_path)
 
             logger.info(f"Merged {len(chunk_pdfs)} chunk PDFs into {final_path}")
 
