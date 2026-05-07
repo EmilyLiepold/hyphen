@@ -9,6 +9,7 @@ single_dewiggle_ifu_default_options = {
     "dewiggling_radius": 0.5,
     "central_reference_spectrum_radius": 0.2,
     "smooth_model_poly_order": 5,
+    "smooth_model_window": 51,
     "diagnostic_fraction": 1,
     "background_reference_spectrum_radii": [1.0, 1.5],
     "fractional_residual_threshold": 0.05,

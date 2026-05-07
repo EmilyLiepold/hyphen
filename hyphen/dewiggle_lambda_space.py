@@ -4,9 +4,29 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft
 from scipy.optimize import curve_fit
-from typing import Callable
+from typing import Callable, Union
 from functools import partial
 logger = logging.getLogger(__name__)
+
+
+def _eval_pf(
+    pf: Union[np.ndarray, Callable, None],
+    x: np.ndarray,
+) -> np.ndarray:
+    if pf is None:
+        return np.zeros_like(x, dtype=float)
+    if callable(pf):
+        return np.asarray(pf(x), dtype=float)
+    return np.polyval(pf, x)
+
+
+def _pf_order(pf: Union[np.ndarray, Callable, None]) -> int:
+    effective_order = getattr(pf, "effective_order", None)
+    if effective_order is not None:
+        return int(effective_order)
+    if pf is None or callable(pf):
+        return 10
+    return len(pf) - 1
 
 
 def generic_envelope(x: np.typing.NDArray[np.float64],
@@ -214,7 +234,7 @@ def plot_dewiggle_result(
         fit_params = saved_fit_params
         reduced_x2 = saved_reduced_x2
     else:
-        normalization = np.polyval(continuum_model, lam)
+        normalization = _eval_pf(continuum_model, lam)
         normalized_spectrum = target_spectrum / normalization
         good_indices = np.isfinite(normalized_spectrum)
         normalization_constant = np.nanmedian(normalized_spectrum[good_indices])
@@ -247,7 +267,7 @@ def plot_dewiggle_result(
         )
 
         background_normalization = np.nanmedian(
-            np.polyval(background_pf, lam) / np.polyval(continuum_model, lam)
+            _eval_pf(background_pf, lam) / _eval_pf(continuum_model, lam)
         )
 
         def background_prototype_exact(x):
@@ -255,7 +275,7 @@ def plot_dewiggle_result(
                 return np.zeros_like(x)
             else:
                 return (
-                    np.polyval(background_pf, inverse_model(x))
+                    _eval_pf(background_pf, inverse_model(x))
                     / np.polyval(continuum_model, inverse_model(x))
                     / background_normalization
                 )
@@ -263,7 +283,7 @@ def plot_dewiggle_result(
         background_prototype_pf = np.polyfit(
             med_px[good_indices],
             background_prototype_exact(med_px[good_indices]),
-            len(background_pf) + 4,
+            _pf_order(background_pf) + 4,
         )
 
         def background_prototype(x):
@@ -1064,7 +1084,7 @@ def dewiggle_lambda_space(
     comparing it to the trace_model.
     """
 
-    normalization = np.polyval(continuum_model, lam)
+    normalization = _eval_pf(continuum_model, lam)
     good_indices = np.isfinite(target_spectrum)
 
     logger.debug(
@@ -1119,7 +1139,7 @@ def dewiggle_lambda_space(
     )
 
     background_normalization = np.nanmedian(
-        np.polyval(background_pf, lam) / np.polyval(continuum_model, lam)
+        _eval_pf(background_pf, lam) / _eval_pf(continuum_model, lam)
     )
 
     def background_prototype_exact(x):
@@ -1127,7 +1147,7 @@ def dewiggle_lambda_space(
             return np.zeros_like(x)
         else:
             return (
-            np.polyval(background_pf, inverse_model(x))
+            _eval_pf(background_pf, inverse_model(x))
             / np.polyval(continuum_model, inverse_model(x))
             / background_normalization
         )
@@ -1135,7 +1155,7 @@ def dewiggle_lambda_space(
     background_prototype_pf = np.polyfit(
         med_px[good_indices],
         background_prototype_exact(med_px[good_indices]),
-        len(background_pf) + 4,
+        _pf_order(background_pf) + 4,
     )
 
     def background_prototype(x):

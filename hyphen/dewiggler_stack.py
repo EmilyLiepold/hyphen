@@ -7,6 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.spatial import ConvexHull
+from scipy.ndimage import median_filter
+from scipy.interpolate import make_interp_spline
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
 from astropy import units as u
@@ -24,6 +26,36 @@ import subprocess
 import shutil
 import os
 from jwst import datamodels
+
+
+class InterpolatedPf:
+    """Wraps a B-spline interpolator so it can be used wherever polynomial
+    coefficient arrays (``pf``) are expected.
+
+    When ``smooth_model_poly_order == -1`` the reference-spectrum fit is
+    replaced by a B-spline over the cleaned spectrum.  Downstream code that
+    calls ``np.polyval(pf, x)`` must instead call ``_eval_pf(pf, x)``; code
+    that calls ``len(pf)`` to size a background-prototype fit must instead
+    call ``_pf_order(pf)``.
+
+    Parameters
+    ----------
+    spline : callable
+        A ``scipy.interpolate.BSpline`` (or any callable ``f(x) -> array``).
+    effective_order : int
+        The polynomial-equivalent complexity, used to size the
+        ``background_prototype_pf`` fit in ``dewiggle_lambda_space``.
+    """
+
+    def __init__(self, spline: Callable, effective_order: int) -> None:
+        self._spline = spline
+        self.effective_order = effective_order
+
+    def __call__(self, x: np.typing.NDArray[np.float64]) -> np.typing.NDArray[np.float64]:
+        return self._spline(x)
+
+    def __len__(self) -> int:  # keeps any accidental len() calls from hard-crashing
+        return self.effective_order + 1
 
 # In-memory WCS cache to avoid repeated loading across batch iterations
 _wcs_cache: dict[tuple[str, str], tuple] = {}
@@ -503,13 +535,14 @@ def determine_reference_spectrum(
     inner_radius: float,
     outer_radius: float,
     smooth_model_poly_order: int,
+    smooth_model_window: int = 51,
     reference_spectra_percentile_cut: float = 1.0,
     sigma_clipping_iterations: int = 3,
     sigma_clipping_threshold: float = 5,
     data_frame_index: int = 1,
     data_quality_frame_index: Optional[int] = 3,
 ) -> tuple[np.typing.NDArray[np.float64],
-           np.typing.NDArray[np.float64],
+           np.typing.NDArray[np.float64] | InterpolatedPf,
            np.typing.NDArray[np.float64]]:
 
     logger.debug(f"Finding reference spectra from {frame_3d_shortname}")
@@ -590,31 +623,66 @@ def determine_reference_spectrum(
         smoothed_reference_spectrum = np.full_like(reference_spectrum, np.nan)
         return reference_spectrum, pf, smoothed_reference_spectrum
 
-    for j in range(sigma_clipping_iterations + 1):
-        # print(good_pixels)
-        pf = np.polyfit(
-            axis_spectral[good_pixels],
-            reference_spectrum[good_pixels],
-            smooth_model_poly_order,
+    if smooth_model_poly_order == -1:
+        logger.info(
+            f"Using median-filter interpolation (window={smooth_model_window}) "
+            f"to build the reference spectrum model"
         )
-
-        logger.debug(
-            f"The polynomial coefficients for the reference spectrum spectrum are {pf}"
-        )
-        smoothed_reference_spectrum = np.polyval(pf, axis_spectral)
+        filtered = median_filter(reference_spectrum, size=smooth_model_window, mode="nearest")
         rms_difference = np.sqrt(
-            np.nanmean(
-                (
-                    reference_spectrum[good_pixels]
-                    - smoothed_reference_spectrum[good_pixels]
-                )
-                ** 2
+            np.nanmean((reference_spectrum[good_pixels] - filtered[good_pixels]) ** 2)
+        )
+        for _ in range(sigma_clipping_iterations):
+            outlier_mask = np.abs(reference_spectrum - filtered) > (
+                sigma_clipping_threshold * rms_difference
             )
+            cleaned = reference_spectrum.copy()
+            cleaned[outlier_mask] = filtered[outlier_mask]
+            filtered = median_filter(cleaned, size=smooth_model_window, mode="nearest")
+            rms_difference = np.sqrt(
+                np.nanmean(
+                    (reference_spectrum[good_pixels & ~outlier_mask]
+                     - filtered[good_pixels & ~outlier_mask]) ** 2
+                )
+            )
+
+        finite_mask = np.isfinite(filtered)
+        spline = make_interp_spline(
+            axis_spectral[finite_mask],
+            filtered[finite_mask],
+            k=3,
         )
-        other_bad_pixels = np.abs(reference_spectrum - smoothed_reference_spectrum) > (
-            sigma_clipping_threshold * rms_difference
+        pf = InterpolatedPf(spline, effective_order=smooth_model_window // 2)
+        smoothed_reference_spectrum = filtered
+    else:
+        logger.info(
+            f"Fitting {smooth_model_poly_order}-th order "
+            f"polynomials to the reference spectra"
         )
-        good_pixels = good_pixels & ~other_bad_pixels
+        for j in range(sigma_clipping_iterations + 1):
+            pf = np.polyfit(
+                axis_spectral[good_pixels],
+                reference_spectrum[good_pixels],
+                smooth_model_poly_order,
+            )
+
+            logger.debug(
+                f"The polynomial coefficients for the reference spectrum spectrum are {pf}"
+            )
+            smoothed_reference_spectrum = np.polyval(pf, axis_spectral)
+            rms_difference = np.sqrt(
+                np.nanmean(
+                    (
+                        reference_spectrum[good_pixels]
+                        - smoothed_reference_spectrum[good_pixels]
+                    )
+                    ** 2
+                )
+            )
+            other_bad_pixels = np.abs(reference_spectrum - smoothed_reference_spectrum) > (
+                sigma_clipping_threshold * rms_difference
+            )
+            good_pixels = good_pixels & ~other_bad_pixels
 
     return reference_spectrum, pf, smoothed_reference_spectrum
 
@@ -893,6 +961,12 @@ def build_image_map_msa(
     return None
 
 
+def _smooth_model_label(smooth_model_poly_order: int, smooth_model_window: int) -> str:
+    if smooth_model_poly_order == -1:
+        return f"Median-filter interpolation (window={smooth_model_window})"
+    return f"Order {smooth_model_poly_order} polynomial"
+
+
 def build_reference_spectra_plot(
     plot: PdfPages | bool | None,
     axis_spectral: np.ndarray,
@@ -904,6 +978,7 @@ def build_reference_spectra_plot(
     central_reference_spectrum_radius: float,
     background_reference_spectrum_radius: tuple[float, float],
     smooth_model_poly_order: int,
+    smooth_model_window: int = 51,
     unit: str = 'arcsec',
     wave_unit: str = 'micron',
     linewidth: float = 0.5,
@@ -934,7 +1009,7 @@ def build_reference_spectra_plot(
         axis_spectral[np.isfinite(central_reference_spectrum)],
         smoothed_reference_spectrum[np.isfinite(central_reference_spectrum)],
         c="r",
-        label=f"Order {smooth_model_poly_order} polynomial",
+        label=_smooth_model_label(smooth_model_poly_order, smooth_model_window),
         linewidth=2*linewidth,
     )
 
@@ -972,7 +1047,7 @@ def build_reference_spectra_plot(
             np.isfinite(background_reference_spectrum)
         ],
         c="r",
-        label=f"Order {smooth_model_poly_order} polynomial",
+        label=_smooth_model_label(smooth_model_poly_order, smooth_model_window),
         linewidth=2*linewidth,
     )
     yrange = get_ybounds(yrange,
@@ -1017,7 +1092,7 @@ def build_reference_spectra_plot(
             * np.isfinite(central_reference_spectrum)
         ],
         c="r",
-        label=f"Order {smooth_model_poly_order} polynomial",
+        label=_smooth_model_label(smooth_model_poly_order, smooth_model_window),
         linewidth=2*linewidth,
     )
 
@@ -1815,6 +1890,7 @@ def dewiggler_stack_ifu(
     dewiggling_radius: float = 0.5,
     central_reference_spectrum_radius: float = 0.2,
     smooth_model_poly_order: int = 5,
+    smooth_model_window: int = 51,
     diagnostic_fraction: int = 1,
     background_reference_spectrum_radii: tuple[float, float] = (1.0, 1.5),
     fractional_residual_threshold: float = 0.05,
@@ -1983,6 +2059,7 @@ def dewiggler_stack_ifu(
             0.0,
             central_reference_spectrum_radius,
             smooth_model_poly_order,
+            smooth_model_window=smooth_model_window,
             reference_spectra_percentile_cut=reference_spectra_percentile_cut,
         )
     )
@@ -1997,6 +2074,7 @@ def dewiggler_stack_ifu(
             background_reference_spectrum_radii[0],
             background_reference_spectrum_radii[1],
             smooth_model_poly_order,
+            smooth_model_window=smooth_model_window,
             reference_spectra_percentile_cut=reference_spectra_percentile_cut,
         )
     )
@@ -2012,6 +2090,7 @@ def dewiggler_stack_ifu(
         central_reference_spectrum_radius,
         background_reference_spectrum_radii,
         smooth_model_poly_order,
+        smooth_model_window=smooth_model_window,
     )
 
     logger.debug(f"Finding bar pixels in {frame_2d_shortname}")
@@ -2786,7 +2865,11 @@ def dewiggler_stack_msa(
         )
     )
 
-    if np.any(np.isnan(pf_back)):
+    _pf_back_failed = (
+        not isinstance(pf_back, InterpolatedPf)
+        and np.any(np.isnan(pf_back))
+    )
+    if _pf_back_failed:
         pf_back = np.zeros_like(pf_back)
         smoothed_background_reference_spectrum = np.zeros_like(
             smoothed_background_reference_spectrum
@@ -2806,6 +2889,7 @@ def dewiggler_stack_msa(
         central_reference_spectrum_radius,
         background_reference_spectrum_radii,
         smooth_model_poly_order,
+        smooth_model_window=smooth_model_window,
         unit='px',
     )
 
@@ -3273,6 +3357,7 @@ def parse_yaml_arguments_and_dewiggle_ifu(getter):
                 ),
                 diagnostic_fraction=getter("diagnostic_fraction"),
                 smooth_model_poly_order=getter("smooth_model_poly_order"),
+                smooth_model_window=getter("smooth_model_window"),
                 background_reference_spectrum_radii=getter(
                     "background_reference_spectrum_radii"
                 ),
@@ -3368,6 +3453,7 @@ def parse_yaml_arguments_and_dewiggle_msa(getter):
                 ),
                 diagnostic_fraction=getter("diagnostic_fraction"),
                 smooth_model_poly_order=getter("smooth_model_poly_order"),
+                smooth_model_window=getter("smooth_model_window"),
                 background_reference_spectrum_radii=getter(
                     "background_reference_spectrum_radii"
                 ),
