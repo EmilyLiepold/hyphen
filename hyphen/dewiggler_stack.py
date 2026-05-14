@@ -34,17 +34,14 @@ class InterpolatedPf:
 
     When ``smooth_model_poly_order == -1`` the reference-spectrum fit is
     replaced by a B-spline over the cleaned spectrum.  Downstream code that
-    calls ``np.polyval(pf, x)`` must instead call ``_eval_pf(pf, x)``; code
-    that calls ``len(pf)`` to size a background-prototype fit must instead
-    call ``_pf_order(pf)``.
+    calls ``np.polyval(pf, x)`` must instead call ``_eval_pf(pf, x)``.
 
     Parameters
     ----------
     spline : callable
         A ``scipy.interpolate.BSpline`` (or any callable ``f(x) -> array``).
     effective_order : int
-        The polynomial-equivalent complexity, used to size the
-        ``background_prototype_pf`` fit in ``dewiggle_lambda_space``.
+        Polynomial-equivalent complexity, used by ``_pf_order``.
     """
 
     def __init__(self, spline: Callable, effective_order: int) -> None:
@@ -601,7 +598,7 @@ def determine_reference_spectrum(
     # polynomial
     logger.info(
         f"Fitting {smooth_model_poly_order}-th order "
-        f"polynomials to the reference spectra"
+        f"Legendre polynomials to the reference spectra"
     )
 
     good_pixels = (
@@ -657,19 +654,19 @@ def determine_reference_spectrum(
     else:
         logger.info(
             f"Fitting {smooth_model_poly_order}-th order "
-            f"polynomials to the reference spectra"
+            f"Legendre polynomials to the reference spectra"
         )
         for j in range(sigma_clipping_iterations + 1):
-            pf = np.polyfit(
+            pf = np.polynomial.Legendre.fit(
                 axis_spectral[good_pixels],
                 reference_spectrum[good_pixels],
                 smooth_model_poly_order,
             )
 
             logger.debug(
-                f"The polynomial coefficients for the reference spectrum spectrum are {pf}"
+                f"The Legendre polynomial coefficients for the reference spectrum are {pf.coef}"
             )
-            smoothed_reference_spectrum = np.polyval(pf, axis_spectral)
+            smoothed_reference_spectrum = pf(axis_spectral)
             rms_difference = np.sqrt(
                 np.nanmean(
                     (
@@ -2865,9 +2862,14 @@ def dewiggler_stack_msa(
         )
     )
 
+    _pf_coef = getattr(pf_back, "coef", None)
     _pf_back_failed = (
         not isinstance(pf_back, InterpolatedPf)
-        and np.any(np.isnan(pf_back))
+        and (
+            np.any(np.isnan(_pf_coef))
+            if _pf_coef is not None
+            else np.any(np.isnan(pf_back))
+        )
     )
     if _pf_back_failed:
         pf_back = np.zeros_like(pf_back)

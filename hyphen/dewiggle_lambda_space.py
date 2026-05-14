@@ -24,6 +24,9 @@ def _pf_order(pf: Union[np.ndarray, Callable, None]) -> int:
     effective_order = getattr(pf, "effective_order", None)
     if effective_order is not None:
         return int(effective_order)
+    degree_method = getattr(pf, "degree", None)
+    if degree_method is not None and callable(degree_method):
+        return int(degree_method())
     if pf is None or callable(pf):
         return 10
     return len(pf) - 1
@@ -280,14 +283,7 @@ def plot_dewiggle_result(
                     / background_normalization
                 )
 
-        background_prototype_pf = np.polyfit(
-            med_px[good_indices],
-            background_prototype_exact(med_px[good_indices]),
-            _pf_order(background_pf) + 4,
-        )
-
-        def background_prototype(x):
-            return np.polyval(background_prototype_pf, x)
+        background_prototype = background_prototype_exact
 
         x_vals = med_px[good_indices]
         y_for_fft = normalized_spectrum[good_indices]
@@ -1152,14 +1148,7 @@ def dewiggle_lambda_space(
             / background_normalization
         )
 
-    background_prototype_pf = np.polyfit(
-        med_px[good_indices],
-        background_prototype_exact(med_px[good_indices]),
-        _pf_order(background_pf) + 4,
-    )
-
-    def background_prototype(x):
-        return np.polyval(background_prototype_pf, x)
+    background_prototype = background_prototype_exact
 
     x_vals = med_px[good_indices]
 
