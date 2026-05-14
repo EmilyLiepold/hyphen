@@ -1025,7 +1025,7 @@ def build_wiggly_model(
     bounds.append([-1e-10, 1e-10])
     initial_guess.append(0.0)
 
-    bounds.append([0.99, 1.01])
+    bounds.append([0.9, 1.1])
     initial_guess.append(1.0)
 
     for j in range(order):
