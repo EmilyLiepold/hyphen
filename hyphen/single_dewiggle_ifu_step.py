@@ -24,6 +24,7 @@ single_dewiggle_ifu_default_options = {
     "slices_to_use": [0],
     "reference_spectra_percentile_cut": 1,
     "try_different_slice_threshold": 0.025,
+    "weight_based_masking_threshold": 0.5,
     "min_fit_params": {
         "alpha_order": 0,
         "beta_order": 1,

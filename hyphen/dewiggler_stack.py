@@ -3360,6 +3360,7 @@ def parse_yaml_arguments_and_dewiggle_ifu(getter):
                 diagnostic_fraction=getter("diagnostic_fraction"),
                 smooth_model_poly_order=getter("smooth_model_poly_order"),
                 smooth_model_window=getter("smooth_model_window"),
+                weight_based_masking_threshold=getter("weight_based_masking_threshold"),
                 background_reference_spectrum_radii=getter(
                     "background_reference_spectrum_radii"
                 ),
