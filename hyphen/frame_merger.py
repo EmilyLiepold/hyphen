@@ -182,13 +182,6 @@ def load_frames(
         - frames (list[list[fits.HDUList]]): The list of FITS HDUList objects.
     """
 
-    # Read in the data
-    frames = [[fits.open(fn) for fn in ff] for ff in primary_fns]
-    if weights_fns is not None:
-        frames_for_weights = [[fits.open(fn) for fn in ff] for ff in weights_fns]
-    else:
-        frames_for_weights = None
-
     fluxes = np.empty(1, dtype=np.float64)
     variances = np.empty(1, dtype=np.float64)
     dqs = np.empty(1, dtype=np.float64)
@@ -211,39 +204,75 @@ def load_frames(
         load_frames_from_disk = True
 
     if load_frames_from_disk:
-        logger.info("Loading arrays from disk")
+        logger.info("Loading arrays from disk (frame-by-frame streaming)")
         try:
+            n_frames = len(primary_fns)
+            n_detectors = len(primary_fns[0])
 
-            logger.info("   Loading dq arrays")
-            dqs = np.asarray([[frame[3].data for frame in fr] for fr in frames])
+            with fits.open(primary_fns[0][0]) as hdul:
+                flux_shape = hdul[1].data.shape
+                n_wavelength, n_slice, n_pixel = flux_shape
 
-            logger.info("   Loading flux arrays")
-            fluxes = np.asarray([[frame[1].data for frame in fr] for fr in frames])
-            fluxes[dqs != 0] = np.nan
+            out_shape = (n_frames, n_wavelength, n_slice, n_pixel)
+            fluxes = np.empty(out_shape, dtype=np.float32)
+            variances = np.empty(out_shape, dtype=np.float32)
+            dqs = np.empty(out_shape, dtype=np.float32)
+            weights = np.empty(out_shape, dtype=np.float32)
 
-            if mask_config is not None:
-                _apply_pixel_masks(fluxes, mask_config, "Flux")
+            for frame_idx in range(n_frames):
+                logger.info(f"   Loading frame {frame_idx+1}/{n_frames}")
 
-            fluxes = np.nansum(fluxes, axis=1)
+                frame_hduls = [fits.open(fn) for fn in primary_fns[frame_idx]]
 
-            logger.info("   Loading var arrays")
-            variances = np.asarray([[frame[2].data for frame in fr] for fr in frames])
-            variances[dqs != 0] = np.nan
-            variances = np.nansum(variances, axis=1)
+                if weights_fns is not None:
+                    weight_hduls = [fits.open(fn) for fn in weights_fns[frame_idx]]
+                else:
+                    weight_hduls = frame_hduls
 
-            logger.info("   Loading weight arrays")
-            if frames_for_weights is not None:
-                weights = np.asarray(
-                    [[frame[4].data for frame in fr] for fr in frames_for_weights]
-                )
-            else:
-                weights = np.asarray([[frame[4].data for frame in fr] for fr in frames])
-            weights[dqs != 0] = np.nan
+                try:
+                    temp_dqs = np.asarray(
+                        [[fh[3].data for fh in frame_hduls]], dtype=np.float32
+                    )
 
-            if mask_config is not None:
-                _apply_pixel_masks(weights, mask_config, "Weight")
-            weights = np.nansum(weights, axis=1)
-            dqs = np.nanmin(dqs, axis=1)
+                    temp_fluxes = np.asarray(
+                        [[fh[1].data for fh in frame_hduls]], dtype=np.float32
+                    )
+                    temp_fluxes[temp_dqs != 0] = np.nan
+
+                    temp_variances = np.asarray(
+                        [[fh[2].data for fh in frame_hduls]], dtype=np.float32
+                    )
+                    temp_variances[temp_dqs != 0] = np.nan
+
+                    temp_weights = np.asarray(
+                        [[fh[4].data for fh in weight_hduls]], dtype=np.float32
+                    )
+                    temp_weights[temp_dqs != 0] = np.nan
+
+                    if mask_config is not None:
+                        filtered_config = []
+                        for entry in mask_config:
+                            entry_frame = entry.get("frame_idx")
+                            if entry_frame is None or entry_frame == frame_idx:
+                                new_entry = dict(entry)
+                                new_entry["frame_idx"] = 0
+                                filtered_config.append(new_entry)
+
+                        if filtered_config:
+                            _apply_pixel_masks(temp_fluxes, filtered_config, "Flux")
+                            _apply_pixel_masks(temp_weights, filtered_config, "Weight")
+
+                    fluxes[frame_idx] = np.nansum(temp_fluxes, axis=1)[0]
+                    variances[frame_idx] = np.nansum(temp_variances, axis=1)[0]
+                    weights[frame_idx] = np.nansum(temp_weights, axis=1)[0]
+                    dqs[frame_idx] = np.nanmin(temp_dqs, axis=1)[0]
+
+                finally:
+                    for hdul in frame_hduls:
+                        hdul.close()
+                    if weights_fns is not None:
+                        for hdul in weight_hduls:
+                            hdul.close()
 
             logger.info("   Caching arrays to disk")
             np.savez_compressed(f"{base_fn}_cached.npz",
@@ -254,6 +283,8 @@ def load_frames(
 
         except (FileNotFoundError, IOError) as e:
             raise RuntimeError(f"Error {e} in file loading")
+
+    frames = [[fits.open(primary_fns[0][0])]]
 
     return fluxes, variances, dqs, weights, frames
 
@@ -334,9 +365,15 @@ def build_spaxel_spectra_diagnostics(pdf, raw_fluxes, title=""):
     fig, axes = plt.subplots(1, figsize=(10, 10))
 
     for i in range(raw_fluxes.shape[0]):
+        positive = raw_fluxes[i][raw_fluxes[i] > 0]
+        if len(positive) == 0:
+            continue
+        median = np.nanmedian(positive)
+        if np.isnan(median) or median == 0:
+            continue
 
         axes.plot(
-            raw_fluxes[i] / np.nanmedian(raw_fluxes[i][raw_fluxes[i] > 0]) - i,
+            raw_fluxes[i] / median - i,
             label=f"{i}",
             c=f"C{i}",
             alpha=1,
@@ -516,23 +553,27 @@ def frame_merge(
         if 'nrs2' not in target_detectors:
             gap_region[1] = 1000000
 
-        for i in range(weights.shape[0]):
-            for j in range(weights.shape[2]):
-                for k in range(weights.shape[3]):
+        # Validate gap_edges[0, ...] against gap_region
+        mask_0_low = gap_edges[0, ...] < gap_region[0]
+        mask_0_high = gap_edges[0, ...] > gap_region[1]
+        mask_0_invalid = mask_0_low | mask_0_high
 
-                    if gap_edges[0, i, j, k] < gap_region[0]:
-                        weights[i, :, j, k] = np.nan
-                        gap_edges[0, i, j, k] = np.nan
-                    elif gap_edges[0, i, j, k] > gap_region[1]:
-                        weights[i, :, j, k] = np.nan
-                        gap_edges[0, i, j, k] = np.nan
+        # Validate gap_edges[1, ...] against gap_region
+        mask_1_high = gap_edges[1, ...] > gap_region[1]
+        mask_1_low = gap_edges[1, ...] < gap_region[0]
+        mask_1_invalid = mask_1_high | mask_1_low
 
-                    if gap_edges[1, i, j, k] > gap_region[1]:
-                        weights[i, :, j, k] = np.nan
-                        gap_edges[1, i, j, k] = np.nan
-                    elif gap_edges[1, i, j, k] < gap_region[0]:
-                        weights[i, :, j, k] = np.nan
-                        gap_edges[1, i, j, k] = np.nan
+        # Combine: if either edge is invalid, NaN the whole spaxel
+        mask_invalid = mask_0_invalid | mask_1_invalid
+
+        # Expand mask along wavelength axis to match weights shape
+        # (n_frames, n_slice, n_pixel) → (n_frames, n_wavelength, n_slice, n_pixel)
+        mask_invalid_4d = np.repeat(mask_invalid[:, np.newaxis, :, :], weights.shape[1], axis=1)
+        weights[mask_invalid_4d] = np.nan
+
+        # NaN out invalid gap edges
+        gap_edges[0, mask_0_invalid] = np.nan
+        gap_edges[1, mask_1_invalid] = np.nan
 
         # Now, we want to find the minimum and maximum valid gap starting index
         # across the N frames
@@ -618,30 +659,29 @@ def frame_merge(
 
     have_both_sets = np.logical_and(nrs1_data, nrs2_data)
 
-    # When we don't have both sets of data for a spaxel, mask it out for both detectors.
-    for i in range(fluxes.shape[0]):
-        for j in range(fluxes.shape[2]):
-            for k in range(fluxes.shape[3]):
-                if not have_both_sets[i, j, k]:
-                    fluxes[i, :, j, k] = np.nan
-                    weights[i, :, j, k] = np.nan
+    # Vectorized masking: have_both_sets has shape (n_frames, n_slice, n_pixel)
+    # fluxes/weights have shape (n_frames, n_wavelength, n_slice, n_pixel)
+    # Expand mask along wavelength axis to match fluxes/weights shape
+    mask = np.repeat(~have_both_sets[:, None, :, :], fluxes.shape[1], axis=1)
+    fluxes[mask] = np.nan
+    weights[mask] = np.nan
 
     total_masked = 0
 
     for j in range(number_within_target_radius):
         total_masked += np.sum(~have_both_sets[:, flat_x[rsort[j]], flat_y[rsort[j]]])
-        for k in range(have_both_sets.shape[0]):
-            if not have_both_sets[k, flat_x[rsort[j]], flat_y[rsort[j]]]:
-                logger.info(
-                    f"Missing data at {k}: ({flat_x[rsort[j]]}, {flat_y[rsort[j]]})"
-                )
+
+    # Log aggregated missing data info
+    missing_by_frame = (~have_both_sets).sum(axis=(1, 2))
+    for k, count in enumerate(missing_by_frame):
+        if count > 0:
+            logger.info(f"Frame {k}: {count} spaxels missing data from both detectors")
 
     logger.info(f"Total masked pixels = {total_masked}")
 
-    # Store a copy of the fluxes and weights before we start merging frames.
-
-    raw_fluxes = fluxes.copy()
-    raw_weights = weights.copy()
+    if pdf is not None:
+        raw_fluxes = fluxes.copy()
+        raw_weights = weights.copy()
 
     fluxes = fluxes * weights
     variances = variances * weights * weights
