@@ -1,0 +1,18 @@
+# UNEXECUTED: replace DATA_ROOT with the absolute folder of corrected cubes.
+step_type: merge
+label: example_two_exposures_two_detectors
+input_filename_prototype: DATA_ROOT/FRAME_DETECTOR_g235h-f170lp_s3d_hyphenated.fits.gz
+target_frames: ["00001", "00002"]
+target_detectors: ["nrs1", "nrs2"]
+output_filename: outputs/merge-01/merged.fits.gz
+plot_filename: ""
+pixel_cut_distance: 0
+# Merger uses ZERO-based [NAXIS1,NAXIS2]; replace for your target.
+central_pixel: [37, 32]
+radius_for_diagnostics: 0
+force_reload_frames: true
+force_reload_gaps: false
+mask_config: null
+mask_gap_union: false
+nrs1_region: [250, 1500]
+nrs2_region: [2500, 3000]
