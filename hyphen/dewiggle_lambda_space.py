@@ -847,7 +847,10 @@ def build_wiggly_model(
     _leg_cache: list = [None, None]
 
     def _eval_components(x, args):
-        cache_key = (len(x), float(x[0]), float(x[-1]), args.tobytes())
+        cache_key = (
+            x.shape, x.dtype.str, x.tobytes(),
+            args.shape, args.dtype.str, args.tobytes(),
+        )
         if _leg_cache[0] == cache_key:
             return _leg_cache[1]
 
