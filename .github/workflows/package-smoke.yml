@@ -1,0 +1,45 @@
+name: Package installation smoke
+"on": [pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  install:
+    # Installation target to validate; this does not test numerical correctness.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      MPLBACKEND: Agg
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+      - name: Build wheel and source distribution
+        run: |
+          python -m pip install build
+          python -m build
+          git rev-parse HEAD > dist/SOURCE_REVISION
+          sha256sum dist/*.whl dist/*.tar.gz > dist/SHA256SUMS
+      - name: Check independent artifact installations outside checkout
+        working-directory: ${{ runner.temp }}
+        shell: bash
+        run: |
+          for artifact in "$GITHUB_WORKSPACE"/dist/*.whl "$GITHUB_WORKSPACE"/dist/*.tar.gz; do
+            venv="$RUNNER_TEMP/$(basename "$artifact").venv"
+            test ! -e "$venv"
+            python -m venv "$venv"
+            "$venv/bin/python" -I -m pip install --no-cache-dir "$artifact"
+            "$venv/bin/python" -I -m pip freeze --all > "$GITHUB_WORKSPACE/dist/$(basename "$artifact").requirements.txt"
+            "$venv/bin/python" -I -m pip check
+            "$venv/bin/python" -I -c 'import hyphen, sys; from pathlib import Path; p = Path(hyphen.__file__).resolve(); print(p); assert p.is_relative_to(Path(sys.prefix).resolve())'
+            "$venv/bin/hyphenate" --help
+          done
+      - name: Retain distributions and installation records
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: package-smoke-python313-ubuntu2404
+          path: dist/
+          if-no-files-found: error
