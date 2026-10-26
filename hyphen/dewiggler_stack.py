@@ -2628,7 +2628,7 @@ def dewiggler_stack_ifu(
                     try:
                         frame_3d[1].data[:, target_index[0], target_index[1]] = \
                             preferred_dewiggled_spectrum
-                        x = dewiggle_main_loop(xindex)
+                        x = dewiggle_main_loop(xindex * diagnostic_fraction)
                     except Exception as e:
                         logger.warning(
                             f"Error in dewiggle_main_loop: {e}"
