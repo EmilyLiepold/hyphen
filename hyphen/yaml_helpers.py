@@ -5,6 +5,10 @@ logger = logging.getLogger(__name__)
 
 
 def validate_yaml_arguments(yaml_files, necessary_arguments=()):
+    """Check names occur in a mapping; values, including None, are not validated.
+
+    Log the first missing name and return False; callers decide whether to skip.
+    """
 
     for arg in necessary_arguments:
         found_arg = False
@@ -20,6 +24,10 @@ def validate_yaml_arguments(yaml_files, necessary_arguments=()):
 
 
 def yaml_layerer(yaml_files):
+    """Return a getter applying fallback, layers, then per-call overrides.
+
+    Mappings have increasing precedence; a present None replaces earlier values.
+    """
 
     def generic_get(arg, default=None, override=()):
         out = default
@@ -35,6 +43,14 @@ def yaml_layerer(yaml_files):
 
 
 def ingest_yaml(yaml_file, targets=[]):
+    """Dispatch mapping documents from a YAML path to matching targets in order.
+
+    A generic document replaces shared arguments for subsequent steps. Missing
+    or unknown step types are ignored; missing required names log and skip the
+    matching target. Required names are checked in generic/step mappings only.
+    Dispatch needs a step-local label. Target errors and invalid document shapes
+    are not handled here.
+    """
 
     with open(yaml_file, "r") as file:
         docs = [dict(d) for d in yaml.safe_load_all(file)]
