@@ -53,6 +53,16 @@ def test_affine_off_grid_evaluation_and_complexity(window):
     np.testing.assert_allclose(_eval_pf(pf, probes), expected, rtol=0, atol=ATOL)
 
 
+def test_quadratic_off_grid_evaluation():
+    samples = [1, 1.5625, 2.25, 3.0625, 4]  # x**2 at the fixture's five nodes.
+    _, pf, smoothed = reference(samples, 5)
+    np.testing.assert_array_equal(smoothed, samples)  # Median preserves monotone samples.
+    probes = np.array([1.125, 1.375, 1.625, 1.875])
+    expected = [1.265625, 1.890625, 2.640625, 3.515625]  # x**2 between nodes.
+    np.testing.assert_allclose(pf(probes), expected, rtol=0, atol=ATOL)
+    np.testing.assert_allclose(_eval_pf(pf, probes), expected, rtol=0, atol=ATOL)
+
+
 @pytest.mark.parametrize("iterations, expected", [
     (0, [0, 10, 10, 10, 20, 10, 10, 10, 30]),
     (1, [0, 10, 10, 10, 10, 10, 10, 10, 30]),
