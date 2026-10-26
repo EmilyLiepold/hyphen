@@ -833,6 +833,36 @@ def build_wiggly_model(
     x_min: float | None = None,
     x_max: float | None = None,
 ):
+    """Build the full model, starting parameters, wiggle factory, bounds and Jacobian.
+
+    For A=alpha_order, G=gamma_order, B=beta_order and H=order in fit_orders,
+    parameters are [alpha_0..alpha_A, gamma_0..gamma_G, beta_0..beta_B,
+    cP, cG, f, a1, b1, ..., aH, bH]; each a_j/b_j is a sine/cosine pair.
+    An envelope with coefficients e_0..e_d is
+    E=e_0*(1+sum(e_k*P_k(t), k=1..d)), with Legendre polynomials P_k and
+    t=2*(x-x_min)/(x_max-x_min)-1. The first coefficient scales the whole
+    envelope; higher coefficients set its shape, not independent amplitudes.
+    x is the one-dimensional trace coordinate used in the oscillatory phase,
+    not wavelength; use nonempty x and distinct limits. Omitted limits use the
+    current x extrema. S=sum(a_j*sin(2*pi*j*f*x)+b_j*cos(2*pi*j*f*x), j=1..H).
+    With bg=background_prototype(x), the full model is
+    wm=alpha*(1+cP*beta*S)+gamma*bg*(1+cG*beta*S).
+    background_prototype supplies the fixed background function bg; it need
+    not have a scaled Legendre form.
+
+    wm and wm_jac use the Legendre basis directly. The wiggle factory uses
+    envelope_prototype(x, *coefficients), which must implement the same scaled
+    Legendre convention and bind the same x limits for consistent evaluation.
+    get_wwm(*parameters) returns the additive wiggle callable
+    (alpha*cP+gamma*bg*cG)*beta*S; envelope_only=True omits S.
+
+    Return (wm, initial_guess, get_wwm, bounds, wm_jac), with
+    N=A+G+B+6+2*H parameters. initial_guess has length N; bounds has shape (2,N),
+    with lower/upper rows. wm(x,*parameters) and get_wwm(*parameters)(x) return
+    len(x) values; wm_jac(x,*parameters) has shape (len(x),N) in packed order.
+    Both prior_fit_sol and prior_fit_orders are needed to convert a previous
+    solution into initial_guess; they do not alter the model or bounds.
+    """
 
     alpha_order = fit_orders["alpha_order"]
     beta_order = fit_orders["beta_order"]
