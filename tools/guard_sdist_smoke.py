@@ -1,4 +1,4 @@
-"""Path and confinement preflight; no process monitor or artifact launcher yet."""
+"""Path, confinement and process-table preflight; no artifact launcher yet."""
 import json
 import os
 from pathlib import Path
@@ -108,6 +108,72 @@ def confinement_preflight(source, output, backend):
     (output / 'canary.json').write_text(json.dumps(record, indent=2) + '\n')
     if record['status'] != 'passed':
         raise RuntimeError(f'Confinement preflight failed; preserve {output}/canary.json')
+    return work
+
+
+def _parse_process_table(stdout, self_pid, self_pgid):
+    """Return [pid, ppid, pgid, rss] rows; ps reports RSS in KiB on macOS."""
+    if type(stdout) is not str:
+        raise ValueError('Process table must be text')
+    rows, pids = [], set()
+    for line in stdout.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        if len(fields) != 4 or not all(field.isascii() and field.isdecimal() for field in fields):
+            raise ValueError('Process table requires four unsigned decimal fields per row')
+        row = list(map(int, fields))
+        if row[0] in pids:
+            raise ValueError('Process table contains duplicate PIDs')
+        pids.add(row[0])
+        rows.append(row)
+    if not any(row[0] == self_pid and row[2] == self_pgid for row in rows):
+        raise ValueError('Process table must include this process and its actual group')
+    return rows
+
+
+def process_table_preflight(output):
+    """Record one bounded ps snapshot in an existing evidence directory.
+
+    Return validated rows only on success. This prerequisite checks availability
+    and parsing; it provides no continuous monitoring or resource enforcement.
+    Evidence-writing errors propagate, including after an otherwise valid check.
+    """
+    argv = ['/bin/ps', '-axo', 'pid=,ppid=,pgid=,rss=']
+    self_pid, self_pgid = os.getpid(), os.getpgrp()
+    record = dict(status='failed', argv=argv, timeout_seconds=2, returncode=None,
+                  stdout=None, stderr=None, error=None, self_pid=self_pid,
+                  self_pgid=self_pgid, rss_unit='KiB')
+    started = time.monotonic()
+    try:
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=2)
+        record.update(returncode=result.returncode, stdout=result.stdout, stderr=result.stderr)
+        if result.returncode != 0:
+            raise RuntimeError('Process-table command failed')
+        rows = _parse_process_table(result.stdout, self_pid, self_pgid)
+        record['status'] = 'passed'
+    except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as error:
+        record['error'] = dict(type=type(error).__name__, reason=str(error))
+        if isinstance(error, subprocess.TimeoutExpired):
+            record.update(stdout=error.stdout, stderr=error.stderr)
+    for name in ('stdout', 'stderr'):
+        if isinstance(record[name], bytes):
+            record[name] = record[name].decode(errors='replace')
+    record['elapsed_seconds'] = time.monotonic() - started
+    (Path(output) / 'monitor.json').write_text(json.dumps(record, indent=2) + '\n')
+    if record['status'] != 'passed':
+        raise RuntimeError(f'Process-table preflight failed; preserve {output}/monitor.json')
+    return rows
+
+
+def preflight(source, output, backend):
+    """Return work only after confinement and process-table prerequisites pass.
+
+    A passed canary.json alone does not establish complete preflight success.
+    This sequence does not launch the artifact utility.
+    """
+    work = confinement_preflight(source, output, backend)
+    process_table_preflight(work.parent)
     return work
 
 
