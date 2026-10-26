@@ -1,33 +1,25 @@
-# SOURCE PACKAGE KNOWLEDGE BASE
+# Source package map
 
-**Generated:** 2026-05-05
-**Parent:** ../../AGENTS.md
+Follow the [repository instructions](../AGENTS.md), which are authoritative.
+This file is navigation; inspect the relevant code before changing its contracts.
 
-## OVERVIEW
-Core dewiggling algorithms, pipeline orchestration, and JWST data I/O for the hyphen package.
+## Where to look
 
-## WHERE TO LOOK
-| Task | Location | Notes |
-|------|----------|-------|
-| Add dewiggle step | `dewiggler_stack.py` | 2500+ lines; core orchestration + all plotting |
-| Fit model logic | `dewiggle_lambda_space.py` | Legendre basis, `build_wiggly_model`, `curve_fit` |
-| CLI entry | `hyphenate.py` | argparse; dispatches to YAML targets |
-| Frame merging | `frame_merger.py` | Co-adds, gap masks, detector union; runnable as script |
-| YAML parsing | `yaml_helpers.py` | Multi-doc layering (`yaml_layerer`), step dispatch |
-| Progress UI | `helpers.py` | `wigglebar` (ascii `~◊-`), `ProgressParallel` |
-| Trace geometry | `tracer_helpers.py` | `find_bars`, `trace_model` |
-| Step defaults | `*_step.py` (4 files) | `default_options` dict + `necessary_arguments` tuple |
+| Concern | Source and entry points |
+| --- | --- |
+| CLI and workflow registration | [hyphenate.py](hyphenate.py): `hyphenate` |
+| YAML documents and option layering | [yaml_helpers.py](yaml_helpers.py): `ingest_yaml`, `yaml_layerer`, `validate_yaml_arguments` |
+| Workflow defaults and required option names | [single IFU](single_dewiggle_ifu_step.py), [batch IFU](batch_dewiggle_ifu_step.py), [single MSA](single_dewiggle_msa_step.py), [batch MSA](batch_dewiggle_msa_step.py): `*_default_options`, `*_necessary_arguments` |
+| IFU/MSA orchestration, FITS/WCS, diagnostics and retries | [dewiggler_stack.py](dewiggler_stack.py): `dewiggler_stack_ifu`, `dewiggler_stack_msa`, `parse_yaml_arguments_and_*` |
+| Reference spectra | [dewiggler_stack.py](dewiggler_stack.py): `determine_reference_spectrum`, `InterpolatedPf` |
+| Spectral models, fitting and fit plots | [dewiggle_lambda_space.py](dewiggle_lambda_space.py): `build_wiggly_model`, `dewiggle_lambda_space`, `plot_dewiggle_result` |
+| Bars and detector traces | [tracer_helpers.py](tracer_helpers.py): `find_bars`, `trace_pixels`, `trace_model`; [dewiggler_stack.py](dewiggler_stack.py): `get_2d_trace_model` for sky/WCS trace selection |
+| Frame/detector masks, gaps, caching and merging | [frame_merger.py](frame_merger.py): `load_frames`, `frame_merge`, `parse_yaml_arguments_and_merge`; merge defaults are in this file |
+| Progress helpers | [helpers.py](helpers.py): `wigglebar`, `ProgressParallel` |
 
-## ANTI-PATTERNS (THIS DIRECTORY)
-- `dewiggler_stack.py`: Deprecated module-level `_wcs_cache` to avoid repeated ASDF handle loading.
-- `frame_merger.py`: `assert False` at line 200 for error handling in `determine_gap_edges`.
-- `frame_merger.py`: Hardcoded pixel size `0.05` with TODO to read from headers.
-- Inconsistent target pixel indexing across modules (1-indexed `[slice, pixel]` vs 0-indexed).
+IFU saved-fit readers and writers are `_load_fit_results` and `_save_fit_results`
+in [dewiggler_stack.py](dewiggler_stack.py). They use paired compressed NPZ and
+JSON files; loading enables pickle, so use only trusted artifacts.
 
-## NOTES
-- WCS cached in module-level `_wcs_cache` to avoid repeated ASDF handle loading.
-- Array caching via `np.savez_compressed` / `np.load` for expensive intermediates.
-- Batch steps use `joblib.Parallel` wrapped in `ProgressParallel`.
-- `dill` used instead of `pickle` for serialization compatibility.
-- Output conventions: `.fits.gz` for cubes, `.pdf` for diagnostics, `.log` for runtime logs.
-- See parent AGENTS.md for architecture patterns (YAML step system, dual-mode IFU/MSA, fit escalation).
+This map does not establish workflow support or scientific validation. Check the
+relevant documentation and evidence under the repository's review rules.
