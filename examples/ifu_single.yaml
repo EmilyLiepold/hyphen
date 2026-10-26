@@ -1,0 +1,35 @@
+# UNEXECUTED: replace paths and review the data-dependent settings below.
+# Relative paths resolve from the directory where hyphenate is launched.
+step_type: dewiggle_ifu
+label: example_ifu_single
+input_2d_filename_prototype: data/detector/FRAME_DETECTOR_crf.fits.gz
+input_3d_filename_prototype: data/cubes/FRAME_DETECTOR_s3d.fits.gz
+output_filename_prototype: outputs/run-01/FRAME_DETECTOR_hyphenated.fits.gz
+plot_filename_prototype: outputs/run-01/FRAME_DETECTOR_hyphenated.pdf
+target_frames: ["00001"]
+target_detectors: ["nrs1"]
+# One-based [x,y]=[NAXIS1,NAXIS2]; replace for your cube.
+central_pixel: [38, 33]
+# Spatial radii are arcseconds, assuming spatial CDELT values in degrees.
+dewiggling_radius: 0.5
+central_reference_spectrum_radius: 0.2
+background_reference_spectrum_radii: [1.0, 1.5]
+smooth_model_poly_order: -1
+smooth_model_window: 51
+diagnostic_fraction: 1
+fractional_residual_threshold: 0.05
+fit_param_fractional_residual_improvement_threshold: 0.0001
+null_fit_improvement_threshold: -0.1  # Negative disables the null-fit test.
+n_jobs: 1
+perform_dewiggling: true
+target_radec: [0.0, 0.0]
+use_cached_wcs: true  # Deprecated no-op; not a working cache switch.
+target_wiggly_pixels: []
+mask_bad_fits: false  # Retain quality failures for inspection.
+slices_to_use: [0]
+reference_spectra_percentile_cut: 1
+try_different_slice_threshold: 0.025
+weight_based_masking_threshold: 0.5
+min_fit_params: {alpha_order: 0, beta_order: 1, gamma_order: 0, order: 0}
+max_fit_params: {alpha_order: 2, beta_order: 5, gamma_order: 2, order: 5}
+masked_regions: []
