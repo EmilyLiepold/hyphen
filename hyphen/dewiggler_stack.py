@@ -1917,7 +1917,7 @@ def dewiggler_stack_ifu(
     fft_order_width=0.1,
     power_ratio_threshold=3.0,
     masked_regions: list = [],
-    null_fit_improvement_threshold=0.005,
+    null_fit_improvement_threshold=-0.1,
     px_per_slice: int = 2,
 ) -> object:
     """
@@ -1970,9 +1970,11 @@ def dewiggler_stack_ifu(
     :param reference_spectra_percentile_cut: When constructing the reference spectra,
         ignore pixels in the top Nth or bottom Nth percentile. 0 here corresponds to no
         cut.
-    :param weight_based_masking_threshold: Perform a masking of the spectra based on
-        the weights. If the weight is below this fraction of the median weight, the
-        pixel will be masked.
+    :param weight_based_masking_threshold: Retain wavelengths with weight strictly
+        greater than this fraction of the positive-weight median. Set None to
+        disable this mask; explicit wavelength masks still apply.
+    :param null_fit_improvement_threshold: Threshold for the null-model comparison.
+        Negative values disable this comparison; the default is -0.1.
     :param px_per_slice: The number of pixels along the slice axis per slice.
         E.g., when using a 0.05'' plate scale and the native slice size is 0.1''
         px_per_slice = 2.
