@@ -46,12 +46,15 @@ def execute(argv, cwd=run, required=True):
 
 def environment(name, pip=False):
     prefix = run / name
-    venv.EnvBuilder(with_pip=pip).create(prefix)
+    venv.EnvBuilder(with_pip=False).create(prefix)
+    python = prefix / 'bin/python'
+    if pip:
+        execute([python, '-I', '-B', '-m', 'ensurepip', '--upgrade', '--default-pip'])
     site = prefix / f'lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages'
     shutil.copytree(backend, site, dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     assert 'include-system-site-packages = false' in (prefix / 'pyvenv.cfg').read_text()
-    return prefix / 'bin/python'
+    return python
 
 
 expected = {p.relative_to(source).as_posix(): p.read_bytes() for p in (source / 'hyphen').glob('*.py')}
