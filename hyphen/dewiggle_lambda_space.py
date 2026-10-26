@@ -556,7 +556,7 @@ def plot_dewiggle_result(
             -(reduced_x2**0.5),
             c="0.5",
             linestyle="--",
-            label='5% residual',
+            label=r'$\pm\sqrt{\nu}$ guide',
             zorder=-10,
         )
         res_hline_zero = axes2[1].axhline(0, c="0.5", linestyle="--", zorder=-10)
