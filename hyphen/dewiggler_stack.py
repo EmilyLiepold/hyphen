@@ -2547,6 +2547,8 @@ def dewiggler_stack_ifu(
 
             merged_tmp = os.path.join(tmpdir, "merged_final.pdf")
             merger = PdfWriter()
+            # Keep the overview and any pages supplied by the caller.
+            merger.append(final_path)
             if _general_figures_tmp is not None:
                 merger.append(_general_figures_tmp)
             for chunk_path in chunk_pdfs:
