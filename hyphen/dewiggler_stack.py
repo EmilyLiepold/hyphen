@@ -1732,7 +1732,11 @@ def _plot_single_spaxel(
     target_index = x[2]
     dist = spaxel_distance[target_index[1], target_index[0]]
     preferred_slice = x[7]
-    preferred_slice_index = slices_to_use.index(preferred_slice)
+    if x[0] is None and len(slices_to_use) > 0 and preferred_slice not in slices_to_use:
+        # With no accepted fit, use the first trace for its diagnostic.
+        preferred_slice_index = 0
+    else:
+        preferred_slice_index = slices_to_use.index(preferred_slice)
 
     i_orig = xindex * diagnostic_fraction
     trace_models = [trace_model_factory(
