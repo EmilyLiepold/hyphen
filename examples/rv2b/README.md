@@ -2,7 +2,8 @@
 
 This Hyphen IFU benchmark processes frames `00001` and `00002` for NRS1 and
 NRS2. This public recipe has not yet been walked through. Contact the authors
-for data access and sharing conditions. The four corrected outputs from the
+for data access and sharing conditions, and request the reference-producing
+source archive, source checksum manifest, dependency inventory and run record. The four corrected outputs from the
 release-preparation run are the selected 1.0 regression references. Agreement
 with them measures regression; assess fit diagnostics for your scientific use.
 
@@ -47,12 +48,12 @@ fully identified.
 
 In the working directory, make a new `generated` directory; if it already exists,
 stop and choose a new working directory so that prior outputs and caches are
-preserved. Set the five numerical thread controls to one as shown, then run
+preserved. Set the six numerical thread controls to one as shown, then run
 all four cases in **one fresh process**:
 
 ```sh
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
-export NUMEXPR_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 BLIS_NUM_THREADS=1
 mkdir generated && hyphenate benchmark.yaml
 ```
 
