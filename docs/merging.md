@@ -12,6 +12,11 @@ Data are not bundled or publicly hosted here. Do not use SCI extracts or uncorre
 Inputs must share shape and aligned spatial/wavelength grids; no resampling occurs.
 HDU positions 1–4 must be SCI, ERR, DQ, WMAP, with consistent units and metadata.
 Inspect detector overlap: detector arrays sum before exposure averaging.
+In direct Python `mask_config`, `frame_idx` is a zero-based input-frame index:
+for two input frames, valid indices are 0 and 1.
+An out-of-range index raises before loader cache or FITS access; an omitted or
+null selector applies to all frames. YAML uses `frame` names, not `frame_idx`.
+Caller setup can already have created a log or diagnostic PDF.
 
 Review the half-open, zero-based wavelength-plane intervals `nrs1_region` and
 `nrs2_region` against your cubes; both are required detector-coverage checks.
