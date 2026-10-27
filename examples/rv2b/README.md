@@ -59,7 +59,10 @@ file presence alone does not establish a successful or scientifically valid fit.
 Compare each exposure against its corresponding candidate historical cube,
 including SCI differences, common-finite samples, changed NaN masks, fitted
 coverage, ERR/DQ/WMAP and relevant WCS metadata. Compare arrays and metadata,
-not gzip bytes or timestamps. The final reference, comparison tool and scientific
-acceptance tolerances remain to be chosen. The historical 16-frame merged cube
+not gzip bytes or timestamps. The [SCI comparison tool](../../tools/compare_spectra.py)
+reports a fractional residual for each pixel; its module documentation gives the
+command, output files and limits. Its 0.5% flag prompts review and is not a
+scientific pass criterion. The final reference and scientific acceptance
+tolerances remain to be chosen. The historical 16-frame merged cube
 is not a reference for a four-exposure merge; this recipe does not perform a
 merge. A clean-environment walkthrough and a newly budgeted replay remain needed.
