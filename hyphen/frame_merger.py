@@ -203,6 +203,12 @@ def load_frames(
     if mask_config is not None:
         load_frames_from_disk = True
 
+    if not load_frames_from_disk:
+        logger.warning(
+            "Using cached frame arrays; current inputs and settings cannot be "
+            "reliably checked. Force a frame reload or use a fresh output name."
+        )
+
     if load_frames_from_disk:
         logger.info("Loading arrays from disk (frame-by-frame streaming)")
         try:
@@ -304,6 +310,12 @@ def determine_gap_edges(
 
     except FileNotFoundError:
         recompute_gaps = True
+
+    if not recompute_gaps:
+        logger.warning(
+            "Using cached gap edges; current inputs and settings cannot be "
+            "reliably checked. Force gap recomputation or use a fresh output name."
+        )
 
     if recompute_gaps:
         try:
