@@ -60,6 +60,7 @@ def test_invalid_global_frame_selector_rejected_before_loader_io(inputs, tmp_pat
     with pytest.raises(ValueError, match="frame_idx.*out of bounds"):
         merger.load_frames(inputs, str(tmp_path / "invalid"), mask_config=mask)
     assert calls == []
+    assert not (tmp_path / "invalid_cached.npz").exists()
     assert not (tmp_path / "invalid_cached_v2.npz").exists()
 
 
