@@ -34,12 +34,20 @@ Use a new directory/basename each run: outputs/logs overwrite and caches lack fu
 input provenance. Relative outputs resolve from the launch directory. After the
 pending correction, expect `merged.fits.gz`, `merged.log`, `merged_cached_v2.npz`
 in `outputs/merge-01`; no PDF or gap cache. Forced reload still writes array caches.
-`mask_gap_union:false` bypasses extra union-gap masking; the current gap finder can
-fail on no-gap spectra. DQ/nonpositive-weight/nonfinite/zero-flux and detector-
-coverage filtering still apply. Do not enable union masking without gap checks.
+`mask_gap_union:false` bypasses extra union-gap masking. With union masking enabled,
+an exposure with usable weights but no detected gap adds no gap to the union;
+an exposure without usable weights contributes no data. Only complete, valid
+gap pairs form the union. DQ/nonpositive-weight/nonfinite/zero-flux and detector-
+coverage filtering still apply.
 For a valid gap union, every channel from the first through the last cached gap
-channel is masked, including both endpoints. Gap indices are zero-based.
+channel is masked in every exposure, including both endpoints. Gap indices are
+zero-based; a single-channel gap at index 2 has the inclusive pair `(2, 2)`.
 If no frame has a valid edge pair, the union step adds no gap mask.
+New gap caches retain the same array shape and inclusive indices, using a NaN
+pair for no detected gap or no usable weights; older code may not support this
+sentinel. Existing valid gap pairs remain readable. Recompute with a fresh
+output basename when inputs or settings change: caches do not verify provenance,
+and forced gap recomputation still attempts to read an existing gap cache first.
 Inspect SCI/ERR, finite masks and zero WMAP coverage; WMAP is coverage, not inverse
 variance. DQ is inherited from the first cube, not recomputed. ERR excludes input
 covariance and fitted-model uncertainty. A completed command is not science acceptance.

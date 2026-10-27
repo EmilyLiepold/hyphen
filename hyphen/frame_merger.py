@@ -16,20 +16,20 @@ logger = logging.getLogger(__name__)
 def identify_chip_gap(
     weight: np.typing.NDArray[np.float64],
     weight_based_masking_threshold: Optional[float] = 0.5,
-) -> tuple[int, int]:
+) -> tuple[float, float]:
     """
     Identify the longest contiguous gap of zero or NaN values in the weight array.
 
     :param weight: A numpy array of float64 values representing weights.
-    :return:  A tuple containing the start and end indices of the longest contiguous
-        gap of zero or NaN values.
+    :return: Inclusive start and end indices of the longest gap, or (NaN, NaN)
+        when there is no detected gap or no usable weight.
     """
 
     gaps = []
     in_gap = False
 
-    if np.all(np.isnan(weight)):
-        return 0, len(weight) - 1
+    if not np.any(np.isfinite(weight) & (weight > 0)):
+        return np.nan, np.nan
 
     median_weight = np.nanmedian(weight)
 
@@ -52,6 +52,9 @@ def identify_chip_gap(
             in_gap = False
         if i == len(weight) - 1 and in_gap:
             gaps.append(current_gap)
+
+    if not gaps:
+        return np.nan, np.nan
 
     gap_lengths = np.asarray([len(g) for g in gaps])
     long_gap = gaps[np.argmax(gap_lengths)]
@@ -544,6 +547,11 @@ def frame_merge(
         # Cast to float so that we can assign NaN
         gap_edges = gap_edges.astype(float)
 
+        # Old caches encode an entirely missing spectrum as a full-span gap.
+        # The current weights distinguish it from a usable full-span gap.
+        no_coverage = ~np.any(np.isfinite(weights) & (weights > 0), axis=1)
+        gap_edges[:, no_coverage] = np.nan
+
         # Make sure that the gap regions we've identified align with the gap.
         # Do this by ignoring any which starts before the spot where we thinkn
         # the gap should appear or ends after that spot.
@@ -575,22 +583,26 @@ def frame_merge(
         gap_edges[0, mask_0_invalid] = np.nan
         gap_edges[1, mask_1_invalid] = np.nan
 
-        # Distinguish a valid channel-0 gap from the no-valid-pair fallback.
-        valid_gap_union = np.any(
-            np.isfinite(gap_edges[0]) & np.isfinite(gap_edges[1]) & ~mask_invalid,
-            axis=0,
+        # Only complete, ordered, in-region pairs can contribute either edge.
+        valid_pairs = (
+            np.isfinite(gap_edges[0]) & np.isfinite(gap_edges[1])
+            & ~mask_invalid & (gap_edges[0] <= gap_edges[1])
+            & (gap_edges[0] >= 0) & (gap_edges[1] < weights.shape[1])
+            & (gap_edges[0] == np.floor(gap_edges[0]))
+            & (gap_edges[1] == np.floor(gap_edges[1]))
         )
+        valid_gap_union = np.any(valid_pairs, axis=0)
 
         # Now, we want to find the minimum and maximum valid gap starting index
         # across the N frames
         # Avoid calling np.nanmin/np.nanmax on all-NaN slices (which emits warnings).
         # Instead replace NaNs with +/-inf and use np.min/np.max which don't warn,
         # then map the +/-inf back to 0 as a safe no-op index.
-        temp_min = np.where(np.isnan(gap_edges[0, ...]), np.inf, gap_edges[0, ...])
+        temp_min = np.where(valid_pairs, gap_edges[0, ...], np.inf)
         min_gap_edge = np.min(temp_min, axis=0)
         min_gap_edge = np.where(np.isinf(min_gap_edge), 0, min_gap_edge).astype(int)
 
-        temp_max = np.where(np.isnan(gap_edges[1, ...]), -np.inf, gap_edges[1, ...])
+        temp_max = np.where(valid_pairs, gap_edges[1, ...], -np.inf)
         max_gap_edge = np.max(temp_max, axis=0)
         max_gap_edge = np.where(np.isneginf(max_gap_edge), 0, max_gap_edge).astype(int)
 
