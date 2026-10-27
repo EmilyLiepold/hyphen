@@ -575,6 +575,12 @@ def frame_merge(
         gap_edges[0, mask_0_invalid] = np.nan
         gap_edges[1, mask_1_invalid] = np.nan
 
+        # Distinguish a valid channel-0 gap from the no-valid-pair fallback.
+        valid_gap_union = np.any(
+            np.isfinite(gap_edges[0]) & np.isfinite(gap_edges[1]) & ~mask_invalid,
+            axis=0,
+        )
+
         # Now, we want to find the minimum and maximum valid gap starting index
         # across the N frames
         # Avoid calling np.nanmin/np.nanmax on all-NaN slices (which emits warnings).
@@ -613,8 +619,9 @@ def frame_merge(
 
         for i in range(weights.shape[2]):
             for j in range(weights.shape[3]):
-                weights[:, min_gap_edge[i, j] : max_gap_edge[i, j], i, j] = np.nan
-                fluxes[:, min_gap_edge[i, j] : max_gap_edge[i, j], i, j] = np.nan
+                if valid_gap_union[i, j]:
+                    weights[:, min_gap_edge[i, j] : max_gap_edge[i, j] + 1, i, j] = np.nan
+                    fluxes[:, min_gap_edge[i, j] : max_gap_edge[i, j] + 1, i, j] = np.nan
 
     # We want to first determine the flux and variance per contributing spaxel.
 
