@@ -11,3 +11,5 @@ and its annotated template. The example requires your own matched input products
 and remains unexecuted; its settings require scientific review for your target.
 
 See [how YAML settings resolve](docs/configuration.md) before editing a recipe.
+
+Read [individual IFU outputs and diagnostics](docs/ifu-outputs.md).
