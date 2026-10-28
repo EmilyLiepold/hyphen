@@ -186,10 +186,12 @@ def load_frames(
     variances = np.empty(1, dtype=np.float64)
     dqs = np.empty(1, dtype=np.float64)
     weights = np.empty(1, dtype=np.float64)
+    # v2 stores variances; legacy caches stored sums of input ERR.
+    cache_filename = f"{base_fn}_cached_v2.npz"
 
     try:
         logger.info("Trying to load arrays from cached arrays")
-        arrs = np.load(f"{base_fn}_cached.npz")
+        arrs = np.load(cache_filename)
         fluxes = arrs["fluxes"]
         variances = arrs["variances"]
         dqs = arrs["dqs"]
@@ -243,6 +245,8 @@ def load_frames(
                         [[fh[2].data for fh in frame_hduls]], dtype=np.float32
                     )
                     temp_variances[temp_dqs != 0] = np.nan
+                    # Input ERR is standard deviation; sum detector variances.
+                    np.square(temp_variances, out=temp_variances)
 
                     temp_weights = np.asarray(
                         [[fh[4].data for fh in weight_hduls]], dtype=np.float32
@@ -275,7 +279,7 @@ def load_frames(
                             hdul.close()
 
             logger.info("   Caching arrays to disk")
-            np.savez_compressed(f"{base_fn}_cached.npz",
+            np.savez_compressed(cache_filename,
                                 fluxes=fluxes,
                                 variances=variances,
                                 dqs=dqs,
@@ -745,6 +749,8 @@ def frame_merge(
 
     # Update the data
     frames[0][0][1].data = fluxes[:]
+    # Convert the combined variance back to standard deviation for ERR.
+    np.sqrt(variances, out=variances)
     frames[0][0][2].data = variances[:]
     frames[0][0][4].data = weights[:]
 
