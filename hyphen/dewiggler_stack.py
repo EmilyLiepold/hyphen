@@ -417,10 +417,10 @@ def determine_target_pixel_ifu(
 
     """
 
-    if target_pixel != (-1, -1):
+    if not np.array_equal(target_pixel, (-1, -1)):
         logger.info("Using provided target pixel provided.")
         target_pixel = target_pixel
-    elif target_radec != (0.0, 0.0):
+    elif not np.array_equal(target_radec, (0.0, 0.0)):
         logger.info(
             "Target Ra and Dec provided. Finding the target pixel from the WCS..."
         )
