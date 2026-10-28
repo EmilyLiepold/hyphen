@@ -16,6 +16,7 @@ dependencies = [
     "jwst", 
     "joblib", 
     "dill",
+    "PyYAML",
     "tqdm",
     "pypdf",
 ]
