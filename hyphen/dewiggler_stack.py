@@ -60,7 +60,19 @@ _wcs_cache: dict[tuple[str, str], tuple] = {}
 np.random.seed(67)
 
 def _save_fit_results(xsols: list, base_filename: str) -> None:
-    """Save fit results to compressed npz + json for fast I/O."""
+    """Write eight-field IFU rows to paired NPZ/JSON sidecars.
+
+    Rows: (parameters, fit_orders, target_index, corrected_spectrum,
+    fft, base_x2, log_text, slice_offset), in the IFU producer's order.
+    target_index is zero-based SCI (row, column); spectra retain wavelength order.
+    parameters may be None and base_x2 a failure sentinel; storage is not fit success.
+    NPZ holds numerical fields; ragged parameters/FFTs use object arrays.
+    fft keys are freq, spectrum_fft, residual_fft; absent keys save empty arrays.
+    JSON holds n, fit_orders as model_details, and log_text as log_strings.
+    Keep both files' rows aligned; no format version or input/config provenance is stored.
+    Suffixes append literally: base_filename='a.pkl.gz' writes
+    a.pkl.gz.npz and a.pkl.gz.json, not a pickle/gzip stream.
+    """
     npz_filename = base_filename + ".npz"
     json_filename = base_filename + ".json"
 
@@ -101,7 +113,10 @@ def _save_fit_results(xsols: list, base_filename: str) -> None:
 
 
 def _load_fit_results(base_filename: str) -> list:
-    """Load fit results from compressed npz + json."""
+    """Reconstruct the eight-field IFU rows described by _save_fit_results.
+    Use the same base_filename and original NPZ/JSON pair; rows align by index.
+    Load trusted artifacts only: object arrays are read with allow_pickle=True.
+    """
     npz_filename = base_filename + ".npz"
     json_filename = base_filename + ".json"
 
