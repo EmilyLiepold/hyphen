@@ -1212,8 +1212,8 @@ def build_spaxel_map_plot_ifu(
     bottom_margin = 0.5
     top_margin = 0.5
     target_figure_height = (
-        len(target_slices) * target_panel_height
-        + (len(target_slices) - 1) * target_panel_height * gap
+        (1 + len(target_slices)) * target_panel_height
+        + len(target_slices) * gap
         + bottom_margin
         + top_margin
     )
