@@ -7,6 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.spatial import ConvexHull
+from scipy.ndimage import median_filter
+from scipy.interpolate import make_interp_spline
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
 from astropy import units as u
@@ -14,16 +16,148 @@ from stdatamodels.jwst.datamodels import IFUImageModel
 from stdatamodels.jwst.datamodels import MultiSlitModel
 from joblib import delayed
 import dill as d
+import json
+import pickle
 from typing import Callable, Optional
 from functools import partial
 import warnings
+import tempfile
+import subprocess
+import shutil
+import os
 from jwst import datamodels
+
+
+class InterpolatedPf:
+    """Wraps a B-spline interpolator so it can be used wherever polynomial
+    coefficient arrays (``pf``) are expected.
+
+    When ``smooth_model_poly_order == -1`` the reference-spectrum fit is
+    replaced by a B-spline over the cleaned spectrum.  Downstream code that
+    calls ``np.polyval(pf, x)`` must instead call ``_eval_pf(pf, x)``.
+
+    Parameters
+    ----------
+    spline : callable
+        A ``scipy.interpolate.BSpline`` (or any callable ``f(x) -> array``).
+    effective_order : int
+        Polynomial-equivalent complexity, used by ``_pf_order``.
+    """
+
+    def __init__(self, spline: Callable, effective_order: int) -> None:
+        self._spline = spline
+        self.effective_order = effective_order
+
+    def __call__(self, x: np.typing.NDArray[np.float64]) -> np.typing.NDArray[np.float64]:
+        return self._spline(x)
+
+    def __len__(self) -> int:  # keeps any accidental len() calls from hard-crashing
+        return self.effective_order + 1
+
+# In-memory WCS cache to avoid repeated loading across batch iterations
+_wcs_cache: dict[tuple[str, str], tuple] = {}
+
+np.random.seed(67)
+
+def _save_fit_results(xsols: list, base_filename: str) -> None:
+    """Save fit results to compressed npz + json for fast I/O."""
+    npz_filename = base_filename + ".npz"
+    json_filename = base_filename + ".json"
+
+    n = len(xsols)
+    # Use dtype=object because fit escalation means xsol arrays have different
+    # lengths across spaxels. FFT arrays can also vary in length.
+    xsols_array = np.array([x[0] for x in xsols], dtype=object)
+    target_indices = np.array([x[2] for x in xsols])
+    dewiggled_spectra = np.array([x[3] for x in xsols])
+    base_x2s = np.array([x[5] for x in xsols])
+    preferred_target_slices = np.array([x[7] for x in xsols])
+
+    # FFT components
+    fft_freqs = np.array([x[4].get("freq", np.array([])) for x in xsols], dtype=object)
+    fft_spectra = np.array([x[4].get("spectrum_fft", np.array([])) for x in xsols], dtype=object)
+    fft_residuals = np.array([x[4].get("residual_fft", np.array([])) for x in xsols], dtype=object)
+
+    np.savez_compressed(
+        npz_filename,
+        xsols=xsols_array,
+        target_indices=target_indices,
+        dewiggled_spectra=dewiggled_spectra,
+        base_x2s=base_x2s,
+        fft_freqs=fft_freqs,
+        fft_spectra=fft_spectra,
+        fft_residuals=fft_residuals,
+        target_slices=preferred_target_slices,
+    )
+
+    # Metadata (dicts, strings) in JSON
+    metadata = {
+        "n": n,
+        "model_details": [x[1] for x in xsols],
+        "log_strings": [x[6] for x in xsols],
+    }
+    with open(json_filename, "w") as f:
+        json.dump(metadata, f)
+
+
+def _load_fit_results(base_filename: str) -> list:
+    """Load fit results from compressed npz + json."""
+    npz_filename = base_filename + ".npz"
+    json_filename = base_filename + ".json"
+
+    data = np.load(npz_filename, allow_pickle=True)
+    with open(json_filename, "r") as f:
+        metadata = json.load(f)
+
+    n = metadata["n"]
+    model_details = metadata["model_details"]
+    log_strings = metadata["log_strings"]
+
+    xsols = []
+    for i in range(n):
+        wiggle_fft = {
+            "freq": data["fft_freqs"][i],
+            "spectrum_fft": data["fft_spectra"][i],
+            "residual_fft": data["fft_residuals"][i],
+        }
+        xsols.append((
+            data["xsols"][i],
+            model_details[i],
+            data["target_indices"][i].tolist(),
+            data["dewiggled_spectra"][i],
+            wiggle_fft,
+            float(data["base_x2s"][i]),
+            log_strings[i],
+            data['target_slices'][i]
+        ))
+
+    data.close()
+    return xsols
+
+
+def _flush_spaxel_logs(xsols: list) -> None:
+    """Write captured per-spaxel fit logs into the root logger's file stream."""
+    root_handlers = [
+        h for h in logging.getLogger().handlers
+        if isinstance(h, logging.FileHandler)
+    ]
+    if not root_handlers:
+        return
+    stream = root_handlers[0].stream
+    for x in xsols:
+        log_text = x[6]
+        if log_text:
+            stream.write(log_text)
+            if not log_text.endswith("\n"):
+                stream.write("\n")
+    stream.flush()
+
 
 warnings.filterwarnings("error", message="Mean of empty slice")
 warnings.filterwarnings("error", message="invalid value encountered in scalar divide")
 
 from .tracer_helpers import find_bars, infer_fractional_position
-from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args
+from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args, plot_dewiggle_result
 from .yaml_helpers import ingest_yaml
 from .helpers import ProgressParallel, get_ybounds
 from .single_dewiggle_ifu_step import (single_dewiggle_ifu_default_options,
@@ -76,6 +210,11 @@ def get_wcs_ifu(
         the 3D frame, and the IFUImageModel (must be kept alive by the caller so the
         underlying ASDF file handle is not garbage-collected).
     """
+    cache_key = (fn_2d, fn_3d)
+    if cache_key in _wcs_cache:
+        logger.info("Using cached WCS")
+        return _wcs_cache[cache_key]
+
     logger.info("Loading global IFU WCS from IFUImageModel")
     ifu_model = IFUImageModel(fn_2d)
     frame_2d_wcs = ifu_model.meta.wcs
@@ -84,7 +223,9 @@ def get_wcs_ifu(
     cube_model = datamodels.open(fn_3d)
     frame_3d_wcs = cube_model.meta.wcs
 
-    return frame_2d_wcs, frame_3d_wcs, ifu_model, cube_model
+    result = (frame_2d_wcs, frame_3d_wcs, ifu_model, cube_model)
+    _wcs_cache[cache_key] = result
+    return result
 
 
 def get_wcs_msa(
@@ -107,6 +248,11 @@ def get_wcs_msa(
         the WCS for each slit in the for the 3D frame
     """
 
+    cache_key = (fn_2d, fn_3d)
+    if cache_key in _wcs_cache:
+        logger.info("Using cached WCS")
+        return _wcs_cache[cache_key]
+
     logger.info("Computing WCS for the slices in the 2D frame")
 
     frame_2d_model = MultiSlitModel(fn_2d)
@@ -119,7 +265,9 @@ def get_wcs_msa(
     n_slits = len(frame_3d_model.slits)
     frame_3d_wcs = [frame_3d_model.slits[i].meta.wcs for i in range(n_slits)]
 
-    return frame_2d_wcs, frame_3d_wcs, frame_2d_model, frame_3d_model
+    result = (frame_2d_wcs, frame_3d_wcs, frame_2d_model, frame_3d_model)
+    _wcs_cache[cache_key] = result
+    return result
 
 
 def determine_detector_name(frame_2d: HDUList) -> str:
@@ -384,13 +532,14 @@ def determine_reference_spectrum(
     inner_radius: float,
     outer_radius: float,
     smooth_model_poly_order: int,
+    smooth_model_window: int = 51,
     reference_spectra_percentile_cut: float = 1.0,
     sigma_clipping_iterations: int = 3,
     sigma_clipping_threshold: float = 5,
     data_frame_index: int = 1,
     data_quality_frame_index: Optional[int] = 3,
 ) -> tuple[np.typing.NDArray[np.float64],
-           np.typing.NDArray[np.float64],
+           np.typing.NDArray[np.float64] | InterpolatedPf,
            np.typing.NDArray[np.float64]]:
 
     logger.debug(f"Finding reference spectra from {frame_3d_shortname}")
@@ -449,7 +598,7 @@ def determine_reference_spectrum(
     # polynomial
     logger.info(
         f"Fitting {smooth_model_poly_order}-th order "
-        f"polynomials to the reference spectra"
+        f"Legendre polynomials to the reference spectra"
     )
 
     good_pixels = (
@@ -471,31 +620,66 @@ def determine_reference_spectrum(
         smoothed_reference_spectrum = np.full_like(reference_spectrum, np.nan)
         return reference_spectrum, pf, smoothed_reference_spectrum
 
-    for j in range(sigma_clipping_iterations + 1):
-        # print(good_pixels)
-        pf = np.polyfit(
-            axis_spectral[good_pixels],
-            reference_spectrum[good_pixels],
-            smooth_model_poly_order,
+    if smooth_model_poly_order == -1:
+        logger.info(
+            f"Using median-filter interpolation (window={smooth_model_window}) "
+            f"to build the reference spectrum model"
         )
-
-        logger.debug(
-            f"The polynomial coefficients for the reference spectrum spectrum are {pf}"
-        )
-        smoothed_reference_spectrum = np.polyval(pf, axis_spectral)
+        filtered = median_filter(reference_spectrum, size=smooth_model_window, mode="nearest")
         rms_difference = np.sqrt(
-            np.nanmean(
-                (
-                    reference_spectrum[good_pixels]
-                    - smoothed_reference_spectrum[good_pixels]
-                )
-                ** 2
+            np.nanmean((reference_spectrum[good_pixels] - filtered[good_pixels]) ** 2)
+        )
+        for _ in range(sigma_clipping_iterations):
+            outlier_mask = np.abs(reference_spectrum - filtered) > (
+                sigma_clipping_threshold * rms_difference
             )
+            cleaned = reference_spectrum.copy()
+            cleaned[outlier_mask] = filtered[outlier_mask]
+            filtered = median_filter(cleaned, size=smooth_model_window, mode="nearest")
+            rms_difference = np.sqrt(
+                np.nanmean(
+                    (reference_spectrum[good_pixels & ~outlier_mask]
+                     - filtered[good_pixels & ~outlier_mask]) ** 2
+                )
+            )
+
+        finite_mask = np.isfinite(filtered)
+        spline = make_interp_spline(
+            axis_spectral[finite_mask],
+            filtered[finite_mask],
+            k=3,
         )
-        other_bad_pixels = np.abs(reference_spectrum - smoothed_reference_spectrum) > (
-            sigma_clipping_threshold * rms_difference
+        pf = InterpolatedPf(spline, effective_order=smooth_model_window // 2)
+        smoothed_reference_spectrum = filtered
+    else:
+        logger.info(
+            f"Fitting {smooth_model_poly_order}-th order "
+            f"Legendre polynomials to the reference spectra"
         )
-        good_pixels = good_pixels & ~other_bad_pixels
+        for j in range(sigma_clipping_iterations + 1):
+            pf = np.polynomial.Legendre.fit(
+                axis_spectral[good_pixels],
+                reference_spectrum[good_pixels],
+                smooth_model_poly_order,
+            )
+
+            logger.debug(
+                f"The Legendre polynomial coefficients for the reference spectrum are {pf.coef}"
+            )
+            smoothed_reference_spectrum = pf(axis_spectral)
+            rms_difference = np.sqrt(
+                np.nanmean(
+                    (
+                        reference_spectrum[good_pixels]
+                        - smoothed_reference_spectrum[good_pixels]
+                    )
+                    ** 2
+                )
+            )
+            other_bad_pixels = np.abs(reference_spectrum - smoothed_reference_spectrum) > (
+                sigma_clipping_threshold * rms_difference
+            )
+            good_pixels = good_pixels & ~other_bad_pixels
 
     return reference_spectrum, pf, smoothed_reference_spectrum
 
@@ -774,6 +958,12 @@ def build_image_map_msa(
     return None
 
 
+def _smooth_model_label(smooth_model_poly_order: int, smooth_model_window: int) -> str:
+    if smooth_model_poly_order == -1:
+        return f"Median-filter interpolation (window={smooth_model_window})"
+    return f"Order {smooth_model_poly_order} polynomial"
+
+
 def build_reference_spectra_plot(
     plot: PdfPages | bool | None,
     axis_spectral: np.ndarray,
@@ -785,6 +975,7 @@ def build_reference_spectra_plot(
     central_reference_spectrum_radius: float,
     background_reference_spectrum_radius: tuple[float, float],
     smooth_model_poly_order: int,
+    smooth_model_window: int = 51,
     unit: str = 'arcsec',
     wave_unit: str = 'micron',
     linewidth: float = 0.5,
@@ -815,7 +1006,7 @@ def build_reference_spectra_plot(
         axis_spectral[np.isfinite(central_reference_spectrum)],
         smoothed_reference_spectrum[np.isfinite(central_reference_spectrum)],
         c="r",
-        label=f"Order {smooth_model_poly_order} polynomial",
+        label=_smooth_model_label(smooth_model_poly_order, smooth_model_window),
         linewidth=2*linewidth,
     )
 
@@ -853,7 +1044,7 @@ def build_reference_spectra_plot(
             np.isfinite(background_reference_spectrum)
         ],
         c="r",
-        label=f"Order {smooth_model_poly_order} polynomial",
+        label=_smooth_model_label(smooth_model_poly_order, smooth_model_window),
         linewidth=2*linewidth,
     )
     yrange = get_ybounds(yrange,
@@ -898,7 +1089,7 @@ def build_reference_spectra_plot(
             * np.isfinite(central_reference_spectrum)
         ],
         c="r",
-        label=f"Order {smooth_model_poly_order} polynomial",
+        label=_smooth_model_label(smooth_model_poly_order, smooth_model_window),
         linewidth=2*linewidth,
     )
 
@@ -935,7 +1126,8 @@ def build_bar_map_plot(
 
     logger.info("Plotting the bars")
     fig, axes = plt.subplots(1, 1, figsize=(6, 6))
-    image_for_map = np.log10(frame_2d[1].data)
+    with np.errstate(invalid='ignore'):
+        image_for_map = np.log10(frame_2d[1].data)
     axes.imshow(
         image_for_map,
         cmap="binary",
@@ -995,7 +1187,7 @@ def build_spaxel_map_plot_ifu(
     target_pixel: tuple[int, int],
     target_index,
     target_slices: list[int],
-    frame_2d: HDUList,
+    frame_2d: np.ndarray,
     bars: np.ndarray,
     trace_models: list[
         list[
@@ -1077,7 +1269,8 @@ def build_spaxel_map_plot_ifu(
     axes[0].set_xlabel("Index 2, Slice Axis, arcsec")
     axes[0].grid(c="r")
 
-    image_for_map = np.log10(frame_2d[1].data)
+    with np.errstate(invalid='ignore'):
+        image_for_map = np.log10(frame_2d)
 
     for tindex, ts in enumerate(target_slices):
         axes[tindex + 1].imshow(
@@ -1438,7 +1631,7 @@ def build_population_diagnostics(
 
 def get_2d_trace_model(wcs_2d: WCS,
                        im_2d: IFUImageModel,
-                       n_target_traces: int = 1000) -> Callable[
+                       n_target_traces: int = 10000) -> Callable[
                            [float, float],
                            tuple[
                                Callable[[np.typing.NDArray[np.float64]], np.typing.NDArray[np.float64]],
@@ -1469,38 +1662,36 @@ def get_2d_trace_model(wcs_2d: WCS,
 
     lams = np.linspace(min_lam, max_lam, 10)
 
-    # we're going to try to approximate the spectra using an order 6 polynomial
-    trace_samples: list[tuple[np.typing.NDArray[np.float64], ...]] = []
-    for tindex in range(len(world_vals[0])):
-        if len(trace_samples) >= n_target_traces:
-            break
-        ra = world_vals[0][tindex]
-        dec = world_vals[1][tindex]
-        trace = wcs_2d.world_to_pixel_values(ra * np.ones_like(lams), dec * np.ones_like(lams), lams)
+    valid_sky_mask = (np.isfinite(world_vals[0]) & np.isfinite(world_vals[1]) & finite_lam_mask)
+    valid_ra  = world_vals[0][valid_sky_mask][:n_target_traces]
+    valid_dec = world_vals[1][valid_sky_mask][:n_target_traces]
+    n_traces = len(valid_ra)
 
-        trace_samples.append(trace)
+    logger.info(f"Identified {n_traces} valid traces for 2D trace modeling.")
 
-    trace_library = np.asarray(trace_samples)
+    ra_batch  = np.repeat(valid_ra, len(lams))
+    dec_batch = np.repeat(valid_dec, len(lams))
+    lam_batch = np.tile(lams, n_traces)
 
-    source_sky_coords = SkyCoord(ra=world_vals[0][:len(trace_library)] * u.deg, dec=world_vals[1][:len(trace_library)] * u.deg, frame='icrs')
+    xy_flat = wcs_2d.world_to_pixel_values(ra_batch, dec_batch, lam_batch)
+    trace_library = np.asarray(xy_flat).T.reshape(n_traces, len(lams), 2)
+
+    V = np.vander(lams, 7)
+    pf_x_lib, _, _, _ = np.linalg.lstsq(V, trace_library[:, :, 0].T, rcond=None)
+    pf_y_lib, _, _, _ = np.linalg.lstsq(V, trace_library[:, :, 1].T, rcond=None)
+    pf_x_lib = pf_x_lib.T
+    pf_y_lib = pf_y_lib.T
 
     def trace_factory(ra, dec):
-        # first, we want to identify the index in our trace library which is closest to the input ra and dec
+        d2 = (valid_ra - ra) ** 2 + (valid_dec - dec) ** 2
+        closest_index = np.argmin(d2)
 
-        input_coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame='icrs')
-        separations = input_coord.separation(source_sky_coords)
-        closest_index = np.argmin(separations)
-        closest_trace = trace_library[closest_index]
-
-        # now do a 6th order polyfit for that trace for both the x and y as a function of lambda
-        pf_x = np.polyfit(lams, closest_trace[0], 6)
-        pf_y = np.polyfit(lams, closest_trace[1], 6)
-
-        # Now we want to build a function which takes in a wavelenghth array and returns the x for the trace at those wavelengths and a function which does the same for y.
+        pf_x = pf_x_lib[closest_index]
+        pf_y = pf_y_lib[closest_index]
 
         def trace_x(lam_array):
             return np.polyval(pf_x, lam_array)
-        
+
         def trace_y(lam_array):
             return np.polyval(pf_y, lam_array)
 
@@ -1509,6 +1700,182 @@ def get_2d_trace_model(wcs_2d: WCS,
     return trace_factory
 
 
+def _make_zero_xsol(fit_params: dict[str, int] | None) -> np.typing.NDArray[np.float64]:
+    if fit_params is None:
+        fit_params = {"alpha_order": 0, "beta_order": 3, "gamma_order": 0, "order": 3}
+    alpha_order = fit_params["alpha_order"]
+    beta_order = fit_params["beta_order"]
+    gamma_order = fit_params["gamma_order"]
+    order = fit_params["order"]
+    return np.asarray(
+        [1.0] + [0.0] * alpha_order
+        + [0.0] + [0.0] * gamma_order
+        + [1.0] + [0.0] * beta_order
+        + [0.0, 0.0, 1.0]
+        + [0.0] * (2 * order),
+        dtype=float,
+    )
+
+
+def _plot_single_spaxel(
+    x, xindex, diagnostic_fraction,
+    _spaxel_world_coords, slices_to_use,
+    trace_model_factory, spaxel_distance,
+    axis_pixel, axis_slice, axis_spectral,
+    image, target_pixel, _det_image, bars,
+    dewiggling_radius, central_reference_spectrum_radius,
+    _sci_data, _dq_data, _wgt_data,
+    weight_based_masking_threshold, masked_regions,
+    pf, pf_back, plot,
+    reusable_artists,
+):
+    target_index = x[2]
+    dist = spaxel_distance[target_index[1], target_index[0]]
+    preferred_slice = x[7]
+    preferred_slice_index = slices_to_use.index(preferred_slice)
+
+    i_orig = xindex * diagnostic_fraction
+    trace_models = [trace_model_factory(
+        _spaxel_world_coords[preferred_slice_index][0][i_orig],
+        _spaxel_world_coords[preferred_slice_index][1][i_orig],
+    )]
+
+    build_spaxel_map_plot_ifu(
+        plot, axis_pixel, axis_slice, axis_spectral, image,
+        spaxel_distance, target_pixel, target_index, [0],
+        _det_image, bars, trace_models,
+        dewiggling_radius, central_reference_spectrum_radius,
+    )
+
+    model_trace = [
+        [trace_models[0][0], trace_models[0][0]],
+        [trace_models[0][0], trace_models[0][0]],
+    ]
+
+    if weight_based_masking_threshold is not None:
+        weight_spectrum = _wgt_data[:, target_index[0], target_index[1]]
+        median_weight = np.nanmedian(weight_spectrum[weight_spectrum > 0.0])
+        weight_based_mask = weight_spectrum > weight_based_masking_threshold * median_weight
+    else:
+        weight_based_mask = np.ones_like(axis_spectral)
+
+    explicit_mask = np.ones_like(axis_spectral)
+    for m in masked_regions:
+        explicit_mask[(axis_spectral >= m[0]) & (axis_spectral <= m[1])] = 0
+    weight_based_mask = (weight_based_mask * explicit_mask).astype(bool)
+
+    xsol = x[0]
+    model_details = x[1]
+    reduced_x2 = x[5]
+    if xsol is None:
+        xsol = _make_zero_xsol(model_details)
+        plot_label = f'({target_index[0]},{target_index[1]}), r = {dist:.3f}" [NO VALID FIT]'
+    else:
+        plot_label = f'({target_index[0]},{target_index[1]}), r = {dist:.3f}"'
+
+    reusable_artists = plot_dewiggle_result(
+        model_trace, pf, axis_spectral,
+        _sci_data[:, target_index[0], target_index[1]],
+        _dq_data[:, target_index[0], target_index[1]],
+        saved_xsol=xsol, saved_fit_params=model_details, saved_reduced_x2=reduced_x2,
+        plot=plot,
+        plot_label=plot_label,
+        background_pf=pf_back,
+        target_maskarray=weight_based_mask,
+        reusable_artists=reusable_artists,
+    )
+    return reusable_artists
+
+
+def _plot_chunk_worker(
+    chunk_idx,
+    xsols_chunk,
+    base_index,
+    tmpdir,
+    diagnostic_fraction,
+    _spaxel_world_coords,
+    slices_to_use,
+    trace_model_factory,
+    spaxel_distance,
+    axis_pixel, axis_slice, axis_spectral,
+    image, target_pixel, _det_image, bars,
+    dewiggling_radius, central_reference_spectrum_radius,
+    _sci_data, _dq_data, _wgt_data,
+    weight_based_masking_threshold, masked_regions,
+    pf, pf_back,
+):
+    import io
+    import matplotlib
+    matplotlib.use("Agg")
+
+    _log_buffer = io.StringIO()
+    _log_handler = logging.StreamHandler(_log_buffer)
+    _log_handler.setFormatter(logging.Formatter(
+        "%(asctime)s: %(funcName)-24s | %(levelname)-8s | %(message)s",
+        datefmt="%Y-%m-%d %I:%M:%S %p",
+    ))
+    _log_handler.setLevel(logging.INFO)
+    _ds_logger = logging.getLogger("hyphen.dewiggler_stack")
+    _dl_logger = logging.getLogger("hyphen.dewiggle_lambda_space")
+    _ds_handlers = list(_ds_logger.handlers)
+    _dl_handlers = list(_dl_logger.handlers)
+    _ds_propagate = _ds_logger.propagate
+    _dl_propagate = _dl_logger.propagate
+    for h in _ds_handlers:
+        _ds_logger.removeHandler(h)
+    for h in _dl_handlers:
+        _dl_logger.removeHandler(h)
+    _ds_logger.propagate = False
+    _dl_logger.propagate = False
+    _ds_logger.addHandler(_log_handler)
+    _dl_logger.addHandler(_log_handler)
+    _ds_logger.setLevel(logging.INFO)
+    _dl_logger.setLevel(logging.INFO)
+
+    try:
+        chunk_pdf = os.path.join(tmpdir, f"chunk_{chunk_idx}.pdf")
+        local_plot = PdfPages(chunk_pdf)
+
+        reusable_artists = None
+        for local_idx, x in enumerate(xsols_chunk):
+            global_xindex = base_index + local_idx
+
+            reusable_artists = _plot_single_spaxel(
+                x=x, xindex=global_xindex,
+                diagnostic_fraction=diagnostic_fraction,
+                _spaxel_world_coords=_spaxel_world_coords,
+                slices_to_use=slices_to_use,
+                trace_model_factory=trace_model_factory,
+                spaxel_distance=spaxel_distance,
+                axis_pixel=axis_pixel, axis_slice=axis_slice,
+                axis_spectral=axis_spectral, image=image,
+                target_pixel=target_pixel, _det_image=_det_image, bars=bars,
+                dewiggling_radius=dewiggling_radius,
+                central_reference_spectrum_radius=central_reference_spectrum_radius,
+                _sci_data=_sci_data, _dq_data=_dq_data, _wgt_data=_wgt_data,
+                weight_based_masking_threshold=weight_based_masking_threshold,
+                masked_regions=masked_regions,
+                pf=pf, pf_back=pf_back,
+                plot=local_plot,
+                reusable_artists=reusable_artists,
+            )
+
+            if (local_idx + 1) % 100 == 0:
+                logger.info(f"Chunk {chunk_idx}: rendered {local_idx + 1}/{len(xsols_chunk)}")
+
+        local_plot.close()
+    finally:
+        _ds_logger.removeHandler(_log_handler)
+        _dl_logger.removeHandler(_log_handler)
+        _log_handler.close()
+        for h in _ds_handlers:
+            _ds_logger.addHandler(h)
+        for h in _dl_handlers:
+            _dl_logger.addHandler(h)
+        _ds_logger.propagate = _ds_propagate
+        _dl_logger.propagate = _dl_propagate
+
+    return chunk_pdf, _log_buffer.getvalue()
 
 
 def dewiggler_stack_ifu(
@@ -1520,6 +1887,7 @@ def dewiggler_stack_ifu(
     dewiggling_radius: float = 0.5,
     central_reference_spectrum_radius: float = 0.2,
     smooth_model_poly_order: int = 5,
+    smooth_model_window: int = 51,
     diagnostic_fraction: int = 1,
     background_reference_spectrum_radii: tuple[float, float] = (1.0, 1.5),
     fractional_residual_threshold: float = 0.05,
@@ -1549,6 +1917,8 @@ def dewiggler_stack_ifu(
     fft_order_width=0.1,
     power_ratio_threshold=3.0,
     masked_regions: list = [],
+    null_fit_improvement_threshold=0.005,
+    px_per_slice: int = 2,
 ) -> object:
     """
     :type slices_to_use: list
@@ -1603,6 +1973,9 @@ def dewiggler_stack_ifu(
     :param weight_based_masking_threshold: Perform a masking of the spectra based on
         the weights. If the weight is below this fraction of the median weight, the
         pixel will be masked.
+    :param px_per_slice: The number of pixels along the slice axis per slice.
+        E.g., when using a 0.05'' plate scale and the native slice size is 0.1''
+        px_per_slice = 2.
     :return: The plot object containing all diagnostics.
     """
 
@@ -1632,11 +2005,20 @@ def dewiggler_stack_ifu(
 
     plot = initialize_plot(plot)
 
+    _general_figures_tmp = None
+    if get_plot_status(plot):
+        _general_figures_tmp_file = tempfile.NamedTemporaryFile(
+            suffix=".pdf", delete=False
+        )
+        _general_figures_tmp_file.close()
+        _general_figures_tmp = _general_figures_tmp_file.name
+        _general_plot = PdfPages(_general_figures_tmp)
+    else:
+        _general_plot = plot
+
     logger.info("Constructing a median image")
 
     image = determine_image(frame_3d)
-
-    print(f'{image.shape=}')
 
     target_pixel = determine_target_pixel_ifu(
         target_pixel=target_pixel,
@@ -1674,6 +2056,7 @@ def dewiggler_stack_ifu(
             0.0,
             central_reference_spectrum_radius,
             smooth_model_poly_order,
+            smooth_model_window=smooth_model_window,
             reference_spectra_percentile_cut=reference_spectra_percentile_cut,
         )
     )
@@ -1688,12 +2071,13 @@ def dewiggler_stack_ifu(
             background_reference_spectrum_radii[0],
             background_reference_spectrum_radii[1],
             smooth_model_poly_order,
+            smooth_model_window=smooth_model_window,
             reference_spectra_percentile_cut=reference_spectra_percentile_cut,
         )
     )
 
     build_reference_spectra_plot(
-        plot,
+        _general_plot,
         axis_spectral,
         central_reference_spectrum,
         smoothed_reference_spectrum,
@@ -1703,6 +2087,7 @@ def dewiggler_stack_ifu(
         central_reference_spectrum_radius,
         background_reference_spectrum_radii,
         smooth_model_poly_order,
+        smooth_model_window=smooth_model_window,
     )
 
     logger.debug(f"Finding bar pixels in {frame_2d_shortname}")
@@ -1714,12 +2099,22 @@ def dewiggler_stack_ifu(
     if len(bars) != 30:
         logger.error(f"Found {len(bars)} bars. This number should be 30...")
 
-    build_bar_map_plot(plot, frame_2d, bars, frame_2d_shortname, detector)
+    build_bar_map_plot(_general_plot, frame_2d, bars, frame_2d_shortname, detector)
+
+    _sci_data = np.array(frame_3d[1].data)
+    _dq_data  = np.array(frame_3d[3].data)
+    _wgt_data = np.array(frame_3d[4].data)
+    _det_image = np.array(frame_2d[1].data)
 
     # Now start iterating through the wiggly pixels
     wiggly_pixels = np.where(
         (~np.isnan(image)) * (spaxel_distance.T < dewiggling_radius)
     )
+
+    distances = spaxel_distance.T[wiggly_pixels].flatten()
+    wiggly_pixels = np.asarray(wiggly_pixels)
+    wiggly_pixels = wiggly_pixels[:,np.argsort(distances)]
+    del distances
 
     if len(target_wiggle_pixels) > 0:
         wiggly_pixels = np.asarray(target_wiggle_pixels).T
@@ -1731,183 +2126,356 @@ def dewiggler_stack_ifu(
     if diagnostic_fraction != 1:
         logger.info(f"Only dewiggling every {diagnostic_fraction}th pixel")
 
+
+    _spaxel_world_coords = [frame_3d_wcs.pixel_to_world_values(
+        wiggly_pixels[1], wiggly_pixels[0] + px_per_slice * stu, np.full(len(wiggly_pixels[0]), 1000)
+    ) for stu in slices_to_use]
+
+    # print(_spaxel_world_coords)
     def dewiggle_main_loop(i: int):
 
-        target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
-        dist = spaxel_distance[target_index[1], target_index[0]]
+        # Ensure warning filters are active in child processes (loky/cloudpickle
+        # does not re-execute module-level code when reconstructing closures)
+        warnings.filterwarnings("error", message="Mean of empty slice")
+        warnings.filterwarnings("error", message="invalid value encountered in scalar divide")
 
-        logger.info("")
-        logger.info(
-            80 * "~"
-        )
-        logger.info(
-            80 * "~"
-        )
+        # Capture logs from this worker invocation
+        import io
+        _log_buffer = io.StringIO()
+        _log_handler = logging.StreamHandler(_log_buffer)
+        _log_handler.setFormatter(logging.Formatter(
+            "%(asctime)s: %(funcName)-24s | %(levelname)-8s | %(message)s",
+            datefmt="%Y-%m-%d %I:%M:%S %p",
+        ))
+        _log_handler.setLevel(logging.INFO)
+        _ds_logger = logging.getLogger("hyphen.dewiggler_stack")
+        _dl_logger = logging.getLogger("hyphen.dewiggle_lambda_space")
+        # Save and remove existing handlers to prevent double logging in workers
+        _ds_handlers = list(_ds_logger.handlers)
+        _dl_handlers = list(_dl_logger.handlers)
+        _ds_propagate = _ds_logger.propagate
+        _dl_propagate = _dl_logger.propagate
+        for h in _ds_handlers:
+            _ds_logger.removeHandler(h)
+        for h in _dl_handlers:
+            _dl_logger.removeHandler(h)
+        _ds_logger.propagate = False
+        _dl_logger.propagate = False
+        _ds_logger.addHandler(_log_handler)
+        _dl_logger.addHandler(_log_handler)
+        _ds_logger.setLevel(logging.INFO)
+        _dl_logger.setLevel(logging.INFO)
 
-        inner_log_msg = (
-            f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
-        )
-        start_gap = (70 - len(inner_log_msg)) // 2
-        end_gap = 70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg)
-        logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
+        try:
+            target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
+            dist = spaxel_distance[target_index[1], target_index[0]]
 
-        second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
-        start_gap = (70 - len(second_line_msg)) // 2
-        end_gap = 70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg)
-        logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
-
-        logger.info(
-            80 * "~"
-        )
-        logger.info(
-            80 * "~"
-        )
-        logger.info("")
-
-        fp = infer_fractional_position(image, target_index)
-
-        base_target_slice = int(np.floor(fp[0] * len(bars)))
-
-        target_slices = [0]
-
-        logger.debug(
-            f"This spaxel is estimated to be in slice {base_target_slice + 1} "
-            f"(fractional position {fp[0]:.2f})"
-        )
-
-        logger.debug(
-            f"For this spaxel, we will try fitting with slices"
-            f"{[t + 1 for t in target_slices]}"
-        )
-
-        if weight_based_masking_threshold is not None:
-            weight_spectrum = frame_3d[4].data[:, target_index[0], target_index[1]]
-            median_weight = np.nanmedian(weight_spectrum[weight_spectrum > 0.0])
-            weight_based_mask = (
-                weight_spectrum > weight_based_masking_threshold * median_weight
-            )
-
-        else:
-            logger.debug("Weight-based masking is disabled.")
-            weight_based_mask = np.ones_like(axis_spectral)
-
-        explicit_mask = np.ones_like(axis_spectral)
-        if len(masked_regions) > 0:
-            logger.debug("Applying masked regions")
-            for m in masked_regions:
-                logger.info("Applying mask {m[0]}-{m[1]}")
-                explicit_mask[
-                    (axis_spectral >= m[0]) & (axis_spectral <= m[1])
-                ] = 0
-
-        weight_based_mask = weight_based_mask * explicit_mask
-        weight_based_mask = weight_based_mask.astype(bool)
-
-        # find world coordinates for the target pixel
-        world_coords = frame_3d_wcs.pixel_to_world_values(
-            target_index[1], target_index[0], 1000
-        )
-
-        trace_models = list([trace_model_factory(world_coords[0], world_coords[1])])
-
-        build_spaxel_map_plot_ifu(
-            plot,
-            axis_pixel,
-            axis_slice,
-            axis_spectral,
-            image,
-            spaxel_distance,
-            target_pixel,
-            target_index,
-            target_slices,
-            frame_2d,
-            bars,
-            trace_models,
-            dewiggling_radius,
-            central_reference_spectrum_radius,
-        )
-
-        # For good measure, we'll try the de-wiggling on the slice before and after the
-        # target slice and use the best model of the three.
-
-        base_x2 = 1e10
-        preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
-        preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
-        preferred_wiggle_fft = {}
-
-        logger.debug(f"Starting the dewiggler for index {i}!")
-        for tindex, target_slice in enumerate(target_slices):
-            if base_x2**0.5 < try_different_slice_threshold:
-                continue
-
+            logger.info("")
             logger.info(
-                40 * "-~"
+                80 * "~"
             )
             logger.info(
-                f"  Current √𝜈 = {base_x2**0.5:.4f} > "
-                f"{try_different_slice_threshold:.4f}"
+                80 * "~"
             )
-            logger.info(f"  Trying trace from slice {target_slice + 1}")
+
+            inner_log_msg = (
+                f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
+            )
+            start_gap = (70 - len(inner_log_msg)) // 2
+            end_gap = 70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg)
+            logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
+
+            second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
+            start_gap = (70 - len(second_line_msg)) // 2
+            end_gap = 70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg)
+            logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
+
             logger.info(
-                40 * "-~"
+                80 * "~"
+            )
+            logger.info(
+                80 * "~"
+            )
+            logger.info("")
+
+            fp = infer_fractional_position(image, target_index)
+
+            base_target_slice = int(np.floor(fp[0] * len(bars)))
+
+            # target_slices = [0]
+
+            logger.debug(
+                f"This spaxel is estimated to be in slice {base_target_slice + 1} "
+                f"(fractional position {fp[0]:.2f})"
             )
 
-            model_trace = [
-                [trace_models[tindex][0], trace_models[tindex][0]],
-                [trace_models[tindex][0], trace_models[tindex][0]],
-            ]
+            logger.debug(
+                f"For this spaxel, we will try fitting with slices"
+                f"{[base_target_slice + 1 + t for t in slices_to_use]}"
+            )
 
-            wiggle_model, dewiggled_spectrum, x2, xsol, model_details, wiggle_fft = (
-                dewiggle_lambda_space(
-                    model_trace,
-                    pf,
-                    axis_spectral,
-                    frame_3d[1].data[:, target_index[0], target_index[1]],
-                    frame_3d[3].data[:, target_index[0], target_index[1]],
-                    plot=plot,
-                    plot_label=(
-                        f'({target_index[0]},{target_index[1]}), r = {dist:.3f}", '
-                        f'Slice {target_slice + 1}'
-                    ),
-                    background_pf=pf_back,
-                    min_fit_params=min_fit_params,
-                    max_fit_params=max_fit_params,
-                    sqrt_nu_improvement_threshold=(
-                        fit_param_fractional_residual_improvement_threshold
-                    ),
-                    target_maskarray=weight_based_mask,
+            if weight_based_masking_threshold is not None:
+                weight_spectrum = _wgt_data[:, target_index[0], target_index[1]]
+                median_weight = np.nanmedian(weight_spectrum[weight_spectrum > 0.0])
+                weight_based_mask = (
+                    weight_spectrum > weight_based_masking_threshold * median_weight
                 )
+
+            else:
+                logger.debug("Weight-based masking is disabled.")
+                weight_based_mask = np.ones_like(axis_spectral)
+
+            explicit_mask = np.ones_like(axis_spectral)
+            if len(masked_regions) > 0:
+                logger.debug("Applying masked regions")
+                for m in masked_regions:
+                    logger.info("Applying mask {m[0]}-{m[1]}")
+                    explicit_mask[
+                        (axis_spectral >= m[0]) & (axis_spectral <= m[1])
+                    ] = 0
+
+            weight_based_mask = weight_based_mask * explicit_mask
+            weight_based_mask = weight_based_mask.astype(bool)
+
+            # find world coordinates for the target pixel
+            trace_models = list([trace_model_factory(_spaxel_world_coords[ii][0][i], _spaxel_world_coords[ii][1][i]) for ii in range(len(_spaxel_world_coords))])
+
+            build_spaxel_map_plot_ifu(
+                False,
+                axis_pixel,
+                axis_slice,
+                axis_spectral,
+                image,
+                spaxel_distance,
+                target_pixel,
+                target_index,
+                [0],
+                _det_image,
+                bars,
+                trace_models,
+                dewiggling_radius,
+                central_reference_spectrum_radius,
             )
 
+            # For good measure, we'll try the de-wiggling on the slice before and after the
+            # target slice and use the best model of the three.
+
+            base_x2 = 1e10
+            preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
+            preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
+            preferred_wiggle_fft = {}
+            preferred_target_slice = 0
+            preferred_xsol = None
+            preferred_model_details = min_fit_params.copy()
+            preferred_null_x2 = float('inf')
+
+
+            logger.debug(f"Starting the dewiggler for index {i}!")
+            for tindex, target_slice in enumerate(slices_to_use):
+                if base_x2**0.5 < try_different_slice_threshold:
+                    continue
+
+                logger.info(
+                    40 * "-~"
+                )
+                logger.info(
+                    f"  Current √𝜈 = {base_x2**0.5:.4f} > "
+                    f"{try_different_slice_threshold:.4f}"
+                )
+                logger.info(f"  Trying trace from slice {target_slice}")
+                logger.info(
+                    40 * "-~"
+                )
+
+                model_trace = [
+                    [trace_models[tindex][0], trace_models[tindex][0]],
+                    [trace_models[tindex][0], trace_models[tindex][0]],
+                ]
+
+                if null_fit_improvement_threshold >= 0:
+                    logger.info("  Fitting null model with f = sqrt(2)")
+                    null_wiggle_model, null_dewiggled_spectrum, null_x2, null_xsol, null_model_details, null_wiggle_fft = (
+                        dewiggle_lambda_space(
+                            model_trace,
+                            pf,
+                            axis_spectral,
+                            _sci_data[:, target_index[0], target_index[1]],
+                            _dq_data[:, target_index[0], target_index[1]],
+                            plot=False,
+                            plot_label=(
+                                f'({target_index[0]},{target_index[1]}), r = {dist:.3f}", '
+                                f'Slice {target_slice}'
+                            ),
+                            background_pf=pf_back,
+                            min_fit_params=min_fit_params,
+                            max_fit_params=max_fit_params,
+                            sqrt_nu_improvement_threshold=(
+                                fit_param_fractional_residual_improvement_threshold
+                            ),
+                            target_maskarray=weight_based_mask,
+                            frequency_fudge=2**0.5,
+                        )
+                    )
+                    logger.info(f" Found √𝜈 = {null_x2**0.5:.4f} with null model (f = sqrt(2))")
+                else:
+                    null_x2 = float('inf')
+                    logger.info("  Null model test disabled (null_fit_improvement_threshold < 0)")
+
+                logger.info("  Now fitting with f = 1")
+                wiggle_model, dewiggled_spectrum, x2, xsol, model_details, wiggle_fft = (
+                    dewiggle_lambda_space(
+                        model_trace,
+                        pf,
+                        axis_spectral,
+                        _sci_data[:, target_index[0], target_index[1]],
+                        _dq_data[:, target_index[0], target_index[1]],
+                        plot=False,
+                        plot_label=(
+                            f'({target_index[0]},{target_index[1]}), r = {dist:.3f}", '
+                            f'Slice {target_slice}'
+                        ),
+                        background_pf=pf_back,
+                        min_fit_params=min_fit_params,
+                        max_fit_params=max_fit_params,
+                        sqrt_nu_improvement_threshold=(
+                            fit_param_fractional_residual_improvement_threshold
+                        ),
+                        target_maskarray=weight_based_mask,
+                    )
+                )
+
+                logger.info(
+                    40 * "-~"
+                )
+                logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {target_slice}")
+                logger.info(f"  Previous best was {base_x2**0.5:.4f}")
+                logger.info(f"Current fit orders are (O, 𝛼, 𝛽, 𝛾) = ({model_details['order']}, "
+                    f"{model_details['alpha_order']}, {model_details['beta_order']}, "
+                    f"{model_details['gamma_order']})"
+                )
+                if model_details['order'] == 0:
+                    logger.info("  No wiggle terms were used in this fit.")
+                logger.info(
+                    40 * "-~"
+                )
+
+                if null_fit_improvement_threshold >= 0:
+                    improved_over_null = ((null_x2**0.5 - x2**0.5) > null_fit_improvement_threshold)
+                    logger.info(f"  Fit with f=1 is {'better' if improved_over_null else 'not better'} than null model by more than {null_fit_improvement_threshold:.4f} in √𝜈 improvement")
+                    logger.info(f"  {'Accepting' if improved_over_null else 'Rejecting'} this fit based on null model comparison")
+                else:
+                    improved_over_null = True
+                    logger.info("  Null model test disabled — accepting fit unconditionally")
+
+                if ((x2 < base_x2) or (preferred_wiggle_model is None)) and improved_over_null:
+                    base_x2 = x2
+                    preferred_wiggle_model = wiggle_model
+                    preferred_dewiggled_spectrum = dewiggled_spectrum
+                    preferred_wiggle_fft = wiggle_fft
+                    preferred_target_slice = target_slice
+                    preferred_xsol = xsol
+                    preferred_model_details = model_details
+                    preferred_null_x2 = null_x2
+
+                else:
+                    if preferred_xsol is None:
+                        preferred_dewiggled_spectrum = _sci_data[:, target_index[0], target_index[1]]
+
+            # ── Vitals summary for the adopted fit ──────────────────────────
+            logger.info("")
+            logger.info(60 * "=")
             logger.info(
-                40 * "-~"
+                f"  ADOPTED FIT SUMMARY  spaxel ({target_index[0]}, {target_index[1]})"
             )
-            logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {target_slice + 1}")
-            logger.info(f"  Previous best was {base_x2**0.5:.4f}")
-            logger.info(
-                40 * "-~"
+            logger.info(60 * "=")
+            logger.info(f"  Adopted trace index : {preferred_target_slice}")
+            if preferred_xsol is None:
+                logger.info("  No valid fit was obtained for this spaxel.")
+            else:
+                _md = preferred_model_details
+                _ao = _md["alpha_order"]
+                _bo = _md["beta_order"]
+                _go = _md["gamma_order"]
+                _wo = _md["order"]
+                _cP_idx  = _ao + _bo + _go + 3
+                _cG_idx  = _ao + _bo + _go + 4
+                _f_idx   = _ao + _bo + _go + 5
+                _ab_start = _ao + _bo + _go + 6
+                _xsol = preferred_xsol
+
+                logger.info(f"  Fit orders          : O={_wo}, α={_ao}, β={_bo}, γ={_go}")
+
+                # Wiggle terms
+                if _wo == 0:
+                    logger.info("  Wiggle terms        : (none — order 0)")
+                else:
+                    logger.info("  Wiggle terms:")
+                    for _j in range(_wo):
+                        _a_j = _xsol[_ab_start + 2 * _j]
+                        _b_j = _xsol[_ab_start + 2 * _j + 1]
+                        _amp = (_a_j**2 + _b_j**2)**0.5
+                        logger.info(
+                            f"    order {_j+1:2d} :  a={_a_j:+.6f}  b={_b_j:+.6f}"
+                            f"  |amplitude|={_amp:.6f}"
+                        )
+
+                # Beta (wiggle-envelope) polynomial
+                _beta_start = _ao + _go + 2
+                _beta_coeffs = _xsol[_beta_start : _beta_start + _bo + 1]
+                logger.info(
+                    f"  Wiggle envelope β   : [{', '.join(f'{c:+.6f}' for c in _beta_coeffs)}]"
+                )
+
+                # Alpha (point-source continuum) polynomial
+                _alpha_coeffs = _xsol[0 : _ao + 1]
+                logger.info(
+                    f"  α continuum         : [{', '.join(f'{c:+.6f}' for c in _alpha_coeffs)}]"
+                )
+
+                # Gamma (background continuum) polynomial
+                _gamma_coeffs = _xsol[_ao + 1 : _ao + _go + 2]
+                logger.info(
+                    f"  γ background        : [{', '.join(f'{c:+.6f}' for c in _gamma_coeffs)}]"
+                )
+
+                # Scalar params
+                logger.info(f"  cP                  : {_xsol[_cP_idx]:+.6f}")
+                logger.info(f"  cG                  : {_xsol[_cG_idx]:+.6f}")
+                logger.info(f"  f                   : {_xsol[_f_idx]:.6f}")
+
+            # Diagnostics
+            logger.info(f"  √𝜈 (adopted fit)    : {base_x2**0.5:.6f}")
+            if null_fit_improvement_threshold >= 0:
+                logger.info(
+                    f"  √𝜈 (null test)      : {preferred_null_x2**0.5:.6f}"
+                )
+            else:
+                logger.info("  √𝜈 (null test)      : (test disabled)")
+            logger.info(60 * "=")
+            logger.info("")
+            # ── End vitals summary ───────────────────────────────────────────
+
+            return (
+                preferred_xsol,
+                preferred_model_details,
+                target_index,
+                preferred_dewiggled_spectrum,
+                preferred_wiggle_fft,
+                base_x2,
+                _log_buffer.getvalue(),
+                preferred_target_slice,
             )
-
-            if (x2 < base_x2) or (preferred_wiggle_model is None):
-                base_x2 = x2
-                preferred_wiggle_model = wiggle_model
-                preferred_dewiggled_spectrum = dewiggled_spectrum
-                preferred_wiggle_fft = wiggle_fft
-
-        return (
-            xsol,
-            model_details,
-            target_index,
-            preferred_dewiggled_spectrum,
-            preferred_wiggle_fft,
-            base_x2,
-        )
-
-    if get_plot_status(plot):
-        logger.warning(
-            "Plotting is active, so defaulting to serial processing with n_jobs=1"
-        )
-        n_jobs = 1
+        finally:
+            _ds_logger.removeHandler(_log_handler)
+            _dl_logger.removeHandler(_log_handler)
+            _log_handler.close()
+            # Restore original handlers and propagate settings
+            for h in _ds_handlers:
+                _ds_logger.addHandler(h)
+            for h in _dl_handlers:
+                _dl_logger.addHandler(h)
+            _ds_logger.propagate = _ds_propagate
+            _dl_logger.propagate = _dl_propagate
 
     xsol_fn = output_frame_filename.replace(".fits", ".pkl")
 
@@ -1915,14 +2483,94 @@ def dewiggler_stack_ifu(
 
         total_steps = len(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
         xsols = ProgressParallel(
-            n_jobs=n_jobs, verbose=0, require="sharedmem", total=total_steps
+            n_jobs=n_jobs, verbose=0, prefer="processes", total=total_steps
         )(
             delayed(dewiggle_main_loop)(i)
             for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
         )
-        d.dump(xsols, open(xsol_fn, "wb"))
+        if get_plot_status(plot):
+            _save_fit_results(xsols, xsol_fn)
+    else:
+        xsols = _load_fit_results(xsol_fn)
 
-    xsols = d.load(open(xsol_fn, "rb"))
+    _flush_spaxel_logs(xsols)
+
+    # Plot pass: generate per-spaxel diagnostic plots from saved results
+    # (runs after parallel fitting completes, or in plot-only mode)
+    if get_plot_status(plot):
+        logger.info("Plotting: regenerating diagnostic plots from saved fit results")
+
+        n_chunks = max(1, min(n_jobs, len(xsols)))
+        chunk_size = (len(xsols) + n_chunks - 1) // n_chunks
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            chunk_results = ProgressParallel(
+                n_jobs=n_jobs, verbose=0, prefer="processes", total=n_chunks
+            )(
+                delayed(_plot_chunk_worker)(
+                    chunk_idx=ci,
+                    xsols_chunk=xsols[ci * chunk_size : (ci + 1) * chunk_size],
+                    base_index=ci * chunk_size,
+                    tmpdir=tmpdir,
+                    diagnostic_fraction=diagnostic_fraction,
+                    _spaxel_world_coords=_spaxel_world_coords,
+                    slices_to_use=slices_to_use,
+                    trace_model_factory=trace_model_factory,
+                    spaxel_distance=spaxel_distance,
+                    axis_pixel=axis_pixel, axis_slice=axis_slice,
+                    axis_spectral=axis_spectral, image=image,
+                    target_pixel=target_pixel, _det_image=_det_image, bars=bars,
+                    dewiggling_radius=dewiggling_radius,
+                    central_reference_spectrum_radius=central_reference_spectrum_radius,
+                    _sci_data=_sci_data, _dq_data=_dq_data, _wgt_data=_wgt_data,
+                    weight_based_masking_threshold=weight_based_masking_threshold,
+                    masked_regions=masked_regions,
+                    pf=pf, pf_back=pf_back,
+                )
+                for ci in range(n_chunks)
+            )
+
+            chunk_pdfs = [r[0] for r in chunk_results]
+            chunk_logs = [r[1] for r in chunk_results]
+
+            chunk_pdfs.sort(
+                key=lambda p: int(os.path.basename(p).split("_")[1].split(".")[0])
+            )
+
+            final_path = plot._file.fh.name
+
+            _general_plot.close()
+            if isinstance(plot, PdfPages):
+                plot.close()
+
+            from pypdf import PdfWriter
+
+            merged_tmp = os.path.join(tmpdir, "merged_final.pdf")
+            merger = PdfWriter()
+            if _general_figures_tmp is not None:
+                merger.append(_general_figures_tmp)
+            for chunk_path in chunk_pdfs:
+                merger.append(chunk_path)
+            merger.write(merged_tmp)
+            merger.close()
+            if _general_figures_tmp is not None:
+                os.unlink(_general_figures_tmp)
+            shutil.move(merged_tmp, final_path)
+
+            logger.info(f"Merged {len(chunk_pdfs)} chunk PDFs into {final_path}")
+
+            root_handlers = [
+                h for h in logging.getLogger().handlers
+                if isinstance(h, logging.FileHandler)
+            ]
+            if root_handlers:
+                stream = root_handlers[0].stream
+                for log_text in chunk_logs:
+                    if log_text:
+                        stream.write(log_text)
+                        if not log_text.endswith("\n"):
+                            stream.write("\n")
+                stream.flush()
 
     for xindex, x in enumerate(xsols):
 
@@ -1989,35 +2637,30 @@ def dewiggler_stack_ifu(
                             np.ones_like(preferred_dewiggled_spectrum) * np.nan
                         )
 
-                else:
-                    preferred_dewiggled_spectrum = (
-                        np.ones_like(preferred_dewiggled_spectrum) * np.nan
-                    )
+                logger.info(
+                    f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
+                    f"{fit_x2**0.5:.4f}."
+                    f"    and P(1) / P(3/2) = {p1 / pavg:.4f}."
+                )
+            else:
+                logger.info(
+                    f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
+                    f"{fit_x2**0.5:.4f}."
+                    f"    and P(1) / P(3/2) = {p1 / pavg:.4f}."
+                )
 
-        frame_3d[1].data[
-            :, target_index[0], target_index[1]
-        ] = preferred_dewiggled_spectrum
+            logger.info('')
+
+            frame_3d[1].data[:, target_index[0], target_index[1]] = \
+                preferred_dewiggled_spectrum
+
+    logger.info("Saving dewiggled frame")
+
+    frame_3d.writeto(output_frame_filename, overwrite=True)
 
     logger.info("Dewiggling complete!")
 
-    build_population_diagnostics(
-        plot,
-        axis_pixel,
-        axis_slice,
-        image,
-        spaxel_distance,
-        target_pixel,
-        frame_3d_shortname,
-        dewiggling_radius,
-        central_reference_spectrum_radius,
-        background_reference_spectrum_radii,
-        xsols,
-        wiggly_pixels,
-        diagnostic_fraction=diagnostic_fraction,
-    )
     close_plot(plot)
-
-    frame_3d.writeto(output_frame_filename, overwrite=True)
 
     return plot
 
@@ -2219,7 +2862,16 @@ def dewiggler_stack_msa(
         )
     )
 
-    if np.any(np.isnan(pf_back)):
+    _pf_coef = getattr(pf_back, "coef", None)
+    _pf_back_failed = (
+        not isinstance(pf_back, InterpolatedPf)
+        and (
+            np.any(np.isnan(_pf_coef))
+            if _pf_coef is not None
+            else np.any(np.isnan(pf_back))
+        )
+    )
+    if _pf_back_failed:
         pf_back = np.zeros_like(pf_back)
         smoothed_background_reference_spectrum = np.zeros_like(
             smoothed_background_reference_spectrum
@@ -2239,6 +2891,7 @@ def dewiggler_stack_msa(
         central_reference_spectrum_radius,
         background_reference_spectrum_radii,
         smooth_model_poly_order,
+        smooth_model_window=smooth_model_window,
         unit='px',
     )
 
@@ -2259,159 +2912,198 @@ def dewiggler_stack_msa(
 
     def dewiggle_main_loop(i: int):
 
-        target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
-        dist = spaxel_distance[target_index[1], target_index[0]]
+        # Ensure warning filters are active in child processes (loky/cloudpickle
+        # does not re-execute module-level code when reconstructing closures)
+        warnings.filterwarnings("error", message="Mean of empty slice")
+        warnings.filterwarnings("error", message="invalid value encountered in scalar divide")
 
-        logger.info("")
-        logger.info(
-            80 * "~"
-        )
-        logger.info(
-            80 * "~"
-        )
+        # Capture logs from this worker invocation
+        import io
+        _log_buffer = io.StringIO()
+        _log_handler = logging.StreamHandler(_log_buffer)
+        _log_handler.setFormatter(logging.Formatter(
+            "%(asctime)s: %(funcName)-24s | %(levelname)-8s | %(message)s",
+            datefmt="%Y-%m-%d %I:%M:%S %p",
+        ))
+        _log_handler.setLevel(logging.INFO)
+        _ds_logger = logging.getLogger("hyphen.dewiggler_stack")
+        _dl_logger = logging.getLogger("hyphen.dewiggle_lambda_space")
+        # Save and remove existing handlers to prevent double logging in workers
+        _ds_handlers = list(_ds_logger.handlers)
+        _dl_handlers = list(_dl_logger.handlers)
+        _ds_propagate = _ds_logger.propagate
+        _dl_propagate = _dl_logger.propagate
+        for h in _ds_handlers:
+            _ds_logger.removeHandler(h)
+        for h in _dl_handlers:
+            _dl_logger.removeHandler(h)
+        _ds_logger.propagate = False
+        _dl_logger.propagate = False
+        _ds_logger.addHandler(_log_handler)
+        _dl_logger.addHandler(_log_handler)
+        _ds_logger.setLevel(logging.INFO)
+        _dl_logger.setLevel(logging.INFO)
 
-        inner_log_msg = (
-            f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
-        )
-        start_gap = (70 - len(inner_log_msg)) // 2
-        end_gap = 70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg)
-        logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
+        try:
+            target_index = [wiggly_pixels[0][i], wiggly_pixels[1][i]]
+            dist = spaxel_distance[target_index[1], target_index[0]]
 
-        second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
-        start_gap = (70 - len(second_line_msg)) // 2
-        end_gap = 70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg)
-        logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
-
-        logger.info(
-            80 * "~"
-        )
-        logger.info(
-            80 * "~"
-        )
-        logger.info("")
-
-        logger.debug("Weight-based masking is disabled.")
-        weight_based_mask = np.ones_like(axis_spectral)
-        
-        explicit_mask = np.ones_like(axis_spectral)
-        if len(masked_regions) > 0:
-            logger.debug("Applying masked regions")
-            for m in masked_regions:
-                logger.info(f"Applying mask {m[0]}-{m[1]}")
-                explicit_mask[
-                    (axis_spectral >= m[0]) & (axis_spectral <= m[1])
-                ] = 0
-
-        weight_based_mask = weight_based_mask * explicit_mask
-        weight_based_mask = weight_based_mask.astype(bool)
-
-        world_coords = frame_3d_wcs[slitlet_3d].pixel_to_world(
-            int(len(axis_spectral) / 2.), target_index[1]
-        )
-
-        trace_models = [
-            get_trace_model(
-                frame_2d_wcs[slitlet_2d],
-                world_coords[0].ra.deg,
-                world_coords[0].dec.deg
+            logger.info("")
+            logger.info(
+                80 * "~"
             )
-        ]
+            logger.info(
+                80 * "~"
+            )
 
-        build_spaxel_map_plot_msa(
-            plot,
-            axis_pixel,
-            axis_slice,
-            axis_spectral,
-            image,
-            spaxel_distance,
-            target_pixel,
-            target_index,
-            None,
-            frame_2d[10 * slitlet_2d + 1],
-            trace_models,
-            dewiggling_radius,
-            central_reference_spectrum_radius,
-            srcalias,
-        )
+            inner_log_msg = (
+                f"Begin Dewiggling of spaxel {i+1:6.0f} of {len(wiggly_pixels[0]):6.0f}"
+            )
+            start_gap = (70 - len(inner_log_msg)) // 2
+            end_gap = 70 - ((70 - len(inner_log_msg)) // 2) - len(inner_log_msg)
+            logger.info(f'~~~~~{" " * start_gap}{inner_log_msg}{" " * end_gap}~~~~~')
 
-        base_x2 = 1e10
-        preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
-        preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
-        preferred_wiggle_fft = {}
+            second_line_msg = f'({target_index[0]}, {target_index[1]}), R = {dist:.2f}"'
+            start_gap = (70 - len(second_line_msg)) // 2
+            end_gap = 70 - ((70 - len(second_line_msg)) // 2) - len(second_line_msg)
+            logger.info(f'~~~~~{" " * start_gap}{second_line_msg}{" " * end_gap}~~~~~')
 
-        logger.debug(f"Starting the dewiggler for index {i}!")
-        # for tindex, target_slice in enumerate(target_slices):
-        # if base_x2**0.5 < try_different_slice_threshold:
-        #     continue
+            logger.info(
+                80 * "~"
+            )
+            logger.info(
+                80 * "~"
+            )
+            logger.info("")
 
-        logger.info(
-            40 * "-~"
-        )
-        # logger.info(
-        #     f"  Current √𝜈 = {base_x2**0.5:.4f} > "
-        #     f"{try_different_slice_threshold:.4f}"
-        # )
-        logger.info(f"  Trying trace for srcalias {srcalias}")
-        logger.info(
-            40 * "-~"
-        )
+            logger.debug("Weight-based masking is disabled.")
+            weight_based_mask = np.ones_like(axis_spectral)
+            
+            explicit_mask = np.ones_like(axis_spectral)
+            if len(masked_regions) > 0:
+                logger.debug("Applying masked regions")
+                for m in masked_regions:
+                    logger.info(f"Applying mask {m[0]}-{m[1]}")
+                    explicit_mask[
+                        (axis_spectral >= m[0]) & (axis_spectral <= m[1])
+                    ] = 0
 
-        model_trace = [
-            [trace_models[0][0], trace_models[0][0]],
-            [trace_models[0][0], trace_models[0][0]],
-        ]
+            weight_based_mask = weight_based_mask * explicit_mask
+            weight_based_mask = weight_based_mask.astype(bool)
 
-        wiggle_model, dewiggled_spectrum, x2, xsol, model_details, wiggle_fft = (
-            dewiggle_lambda_space(
-                model_trace,
-                pf,
+            world_coords = frame_3d_wcs[slitlet_3d].pixel_to_world(
+                int(len(axis_spectral) / 2.), target_index[1]
+            )
+
+            trace_models = [
+                get_trace_model(
+                    frame_2d_wcs[slitlet_2d],
+                    world_coords[0].ra.deg,
+                    world_coords[0].dec.deg
+                )
+            ]
+
+            build_spaxel_map_plot_msa(
+                False,
+                axis_pixel,
+                axis_slice,
                 axis_spectral,
-                frame_3d[8 * slitlet_3d + 1].data[target_index[1], :],
+                image,
+                spaxel_distance,
+                target_pixel,
+                target_index,
                 None,
-                plot=plot,
-                plot_label=(
-                    f'Pixel {target_index[1]}; R = {dist:.1f} px; '
-                    f'Src {srcalias}'
-                ),
-                background_pf=pf_back,
-                min_fit_params=min_fit_params,
-                max_fit_params=max_fit_params,
-                sqrt_nu_improvement_threshold=(
-                    fit_param_fractional_residual_improvement_threshold
-                ),
-                target_maskarray=weight_based_mask,
+                frame_2d[10 * slitlet_2d + 1],
+                trace_models,
+                dewiggling_radius,
+                central_reference_spectrum_radius,
+                srcalias,
             )
-        )
 
-        logger.info(
-            40 * "-~"
-        )
-        logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {slitlet_3d + 1}")
-        logger.info(f"  Previous best was {base_x2**0.5:.4f}")
-        logger.info(
-            40 * "-~"
-        )
+            base_x2 = 1e10
+            preferred_wiggle_model = np.ones_like(axis_spectral) * np.nan
+            preferred_dewiggled_spectrum = np.ones_like(axis_spectral) * np.nan
+            preferred_wiggle_fft = {}
 
-        if (x2 < base_x2) or (preferred_wiggle_model is None):
-            base_x2 = x2
-            preferred_wiggle_model = wiggle_model
-            preferred_dewiggled_spectrum = dewiggled_spectrum
-            preferred_wiggle_fft = wiggle_fft
+            logger.debug(f"Starting the dewiggler for index {i}!")
+            # for tindex, target_slice in enumerate(target_slices):
+            # if base_x2**0.5 < try_different_slice_threshold:
+            #     continue
 
-        return (
-            xsol,
-            model_details,
-            target_index,
-            preferred_dewiggled_spectrum,
-            preferred_wiggle_fft,
-            base_x2,
-        )
+            logger.info(
+                40 * "-~"
+            )
+            # logger.info(
+            #     f"  Current √𝜈 = {base_x2**0.5:.4f} > "
+            #     f"{try_different_slice_threshold:.4f}"
+            # )
+            logger.info(f"  Trying trace for srcalias {srcalias}")
+            logger.info(
+                40 * "-~"
+            )
 
-    if get_plot_status(plot):
-        logger.warning(
-            "Plotting is active, so defaulting to serial processing with n_jobs=1"
-        )
-        n_jobs = 1
+            model_trace = [
+                [trace_models[0][0], trace_models[0][0]],
+                [trace_models[0][0], trace_models[0][0]],
+            ]
+
+            wiggle_model, dewiggled_spectrum, x2, xsol, model_details, wiggle_fft = (
+                dewiggle_lambda_space(
+                    model_trace,
+                    pf,
+                    axis_spectral,
+                    frame_3d[8 * slitlet_3d + 1].data[target_index[1], :],
+                    None,
+                    plot=False,
+                    plot_label=(
+                        f'Pixel {target_index[1]}; R = {dist:.1f} px; '
+                        f'Src {srcalias}'
+                    ),
+                    background_pf=pf_back,
+                    min_fit_params=min_fit_params,
+                    max_fit_params=max_fit_params,
+                    sqrt_nu_improvement_threshold=(
+                        fit_param_fractional_residual_improvement_threshold
+                    ),
+                    target_maskarray=weight_based_mask,
+                )
+            )
+
+            logger.info(
+                40 * "-~"
+            )
+            logger.info(f"  Found √𝜈 = {x2**0.5:.4f} using slice {slitlet_3d + 1}")
+            logger.info(f"  Previous best was {base_x2**0.5:.4f}")
+            logger.info(
+                40 * "-~"
+            )
+
+            if (x2 < base_x2) or (preferred_wiggle_model is None):
+                base_x2 = x2
+                preferred_wiggle_model = wiggle_model
+                preferred_dewiggled_spectrum = dewiggled_spectrum
+                preferred_wiggle_fft = wiggle_fft
+
+            return (
+                xsol,
+                model_details,
+                target_index,
+                preferred_dewiggled_spectrum,
+                preferred_wiggle_fft,
+                base_x2,
+                _log_buffer.getvalue(),
+            )
+        finally:
+            _ds_logger.removeHandler(_log_handler)
+            _dl_logger.removeHandler(_log_handler)
+            _log_handler.close()
+            # Restore original handlers and propagate settings
+            for h in _ds_handlers:
+                _ds_logger.addHandler(h)
+            for h in _dl_handlers:
+                _dl_logger.addHandler(h)
+            _ds_logger.propagate = _ds_propagate
+            _dl_logger.propagate = _dl_propagate
 
     xsol_fn = output_frame_filename.replace(".fits", ".pkl")
 
@@ -2419,14 +3111,85 @@ def dewiggler_stack_msa(
 
         total_steps = len(range(len(wiggly_pixels[0]))[::diagnostic_fraction])
         xsols = ProgressParallel(
-            n_jobs=n_jobs, verbose=0, require="sharedmem", total=total_steps
+            n_jobs=n_jobs, verbose=0, prefer="processes", total=total_steps
         )(
             delayed(dewiggle_main_loop)(i)
             for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
         )
-        d.dump(xsols, open(xsol_fn, "wb"))
+        if get_plot_status(plot):
+            _save_fit_results(xsols, xsol_fn)
+    else:
+        xsols = _load_fit_results(xsol_fn)
 
-    xsols = d.load(open(xsol_fn, "rb"))
+    _flush_spaxel_logs(xsols)
+
+    # Plot pass: generate per-spaxel diagnostic plots from saved results
+    # (runs after parallel fitting completes, or in plot-only mode)
+    if get_plot_status(plot):
+        logger.info("Plotting: regenerating diagnostic plots from saved fit results")
+        reusable_artists = None
+
+        for xindex in range(len(xsols)):
+            x = xsols[xindex]
+            target_index = x[2]
+            dist = spaxel_distance[target_index[1], target_index[0]]
+
+            world_coords = frame_3d_wcs[slitlet_3d].pixel_to_world(
+                int(len(axis_spectral) / 2.), target_index[1]
+            )
+            trace_models = [
+                get_trace_model(
+                    frame_2d_wcs[slitlet_2d],
+                    world_coords[0].ra.deg,
+                    world_coords[0].dec.deg,
+                )
+            ]
+
+            build_spaxel_map_plot_msa(
+                plot, axis_pixel, axis_slice, axis_spectral, image,
+                spaxel_distance, target_pixel, target_index,
+                None,
+                frame_2d[10 * slitlet_2d + 1],
+                trace_models,
+                dewiggling_radius, central_reference_spectrum_radius,
+                srcalias,
+            )
+
+            model_trace = [
+                [trace_models[0][0], trace_models[0][0]],
+                [trace_models[0][0], trace_models[0][0]],
+            ]
+
+            weight_based_mask = np.ones_like(axis_spectral)
+            explicit_mask = np.ones_like(axis_spectral)
+            if len(masked_regions) > 0:
+                for m in masked_regions:
+                    explicit_mask[
+                        (axis_spectral >= m[0]) & (axis_spectral <= m[1])
+                    ] = 0
+            weight_based_mask = weight_based_mask * explicit_mask
+            weight_based_mask = weight_based_mask.astype(bool)
+
+            reusable_artists = plot_dewiggle_result(
+                model_trace,
+                pf,
+                axis_spectral,
+                frame_3d[8 * slitlet_3d + 1].data[target_index[1], :],
+                None,
+                saved_xsol=x[0],
+                saved_fit_params=x[1],
+                saved_reduced_x2=x[5],
+                plot=plot,
+                plot_label=f'Pixel {target_index[1]}; R = {dist:.1f} px; Src {srcalias}',
+                background_pf=pf_back,
+                target_maskarray=weight_based_mask,
+                reusable_artists=reusable_artists,
+            )
+
+            if (xindex + 1) % 100 == 0:
+                logger.info(f"Plot-only: rendered {xindex + 1}/{len(xsols)} spaxels")
+
+        logger.info(f"Plot-only: rendered all {len(xsols)} spaxels")
 
     for xindex, x in enumerate(xsols):
 
@@ -2596,6 +3359,8 @@ def parse_yaml_arguments_and_dewiggle_ifu(getter):
                 ),
                 diagnostic_fraction=getter("diagnostic_fraction"),
                 smooth_model_poly_order=getter("smooth_model_poly_order"),
+                smooth_model_window=getter("smooth_model_window"),
+                weight_based_masking_threshold=getter("weight_based_masking_threshold"),
                 background_reference_spectrum_radii=getter(
                     "background_reference_spectrum_radii"
                 ),
@@ -2617,6 +3382,7 @@ def parse_yaml_arguments_and_dewiggle_ifu(getter):
                     "reference_spectra_percentile_cut"
                 ),
                 try_different_slice_threshold=getter("try_different_slice_threshold"),
+                null_fit_improvement_threshold=getter("null_fit_improvement_threshold"),
             )
 
     return 0
@@ -2690,6 +3456,7 @@ def parse_yaml_arguments_and_dewiggle_msa(getter):
                 ),
                 diagnostic_fraction=getter("diagnostic_fraction"),
                 smooth_model_poly_order=getter("smooth_model_poly_order"),
+                smooth_model_window=getter("smooth_model_window"),
                 background_reference_spectrum_radii=getter(
                     "background_reference_spectrum_radii"
                 ),
