@@ -32,8 +32,8 @@ classifiers= [
 ]
 
 [project.urls]
-Homepage = "https://github.com/EmilyLiepold/Wiggles"
-"Bug Tracker" = "https://github.com/EmilyLiepold/Wiggles/issues"
+Homepage = "https://github.com/EmilyLiepold/hyphen"
+"Bug Tracker" = "https://github.com/EmilyLiepold/hyphen/issues"
 # Homepage = "https://github.com/EmilyLiepold/hyphen"
 # "Bug Tracker" = "https://github.com/EmilyLiepold/hyphen/issues"
 
