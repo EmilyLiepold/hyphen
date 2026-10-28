@@ -938,29 +938,35 @@ def build_wiggly_model(
 
         col = 0
 
-        alpha0 = alpha / (ba[0] if alpha_order == 0 else 1.0)
+        alpha_coeffs = np.asarray(args[: alpha_order + 1])
+        alpha0 = alpha_coeffs[0]
+        alpha_shape = ba[0] + alpha_coeffs[1:] @ ba[1:]
         for k in range(alpha_order + 1):
             if k == 0:
-                J[:, col] = ba[0] * (1.0 + cP * jwm_val)
+                J[:, col] = alpha_shape * (1.0 + cP * jwm_val)
             else:
-                J[:, col] = alpha * ba[k] * (1.0 + cP * jwm_val)
+                J[:, col] = alpha0 * ba[k] * (1.0 + cP * jwm_val)
             col += 1
 
-        gamma0 = gamma / (bg_leg[0] if gamma_order == 0 else 1.0)
+        gamma_coeffs = np.asarray(args[alpha_order + 1: alpha_order + gamma_order + 2])
+        gamma0 = gamma_coeffs[0]
+        gamma_shape = bg_leg[0] + gamma_coeffs[1:] @ bg_leg[1:]
         for k in range(gamma_order + 1):
             if k == 0:
-                J[:, col] = bg_leg[0] * bg * (1.0 + cG * jwm_val)
+                J[:, col] = gamma_shape * bg * (1.0 + cG * jwm_val)
             else:
-                J[:, col] = gamma * bg_leg[k] * bg * (1.0 + cG * jwm_val)
+                J[:, col] = gamma0 * bg_leg[k] * bg * (1.0 + cG * jwm_val)
             col += 1
 
         amp_factor = alpha * cP + gamma * bg * cG
-        beta0 = beta_env / (bb[0] if beta_order == 0 else 1.0)
+        beta_coeffs = np.asarray(args[alpha_order + gamma_order + 2: cP_idx])
+        beta0 = beta_coeffs[0]
+        beta_shape = bb[0] + beta_coeffs[1:] @ bb[1:]
         for k in range(beta_order + 1):
             if k == 0:
-                J[:, col] = amp_factor * bb[0] * sin_sum
+                J[:, col] = amp_factor * beta_shape * sin_sum
             else:
-                J[:, col] = amp_factor * beta_env * bb[k] * sin_sum
+                J[:, col] = amp_factor * beta0 * bb[k] * sin_sum
             col += 1
 
         J[:, col] = alpha * jwm_val
