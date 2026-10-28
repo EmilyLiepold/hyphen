@@ -14,6 +14,7 @@ batch_dewiggle_ifu_default_options = {
     "background_reference_spectrum_radii": [1.0, 1.5],
     "fractional_residual_threshold": 0.05,
     "fit_param_fractional_residual_improvement_threshold": 0.0001,
+    "null_fit_improvement_threshold": -0.1,
     "n_jobs": 1,
     "perform_dewiggling": True,
     "target_radec": (0.0, 0.0),
@@ -23,6 +24,7 @@ batch_dewiggle_ifu_default_options = {
     "slices_to_use": [0],
     "reference_spectra_percentile_cut": 1,
     "try_different_slice_threshold": 0.025,
+    "weight_based_masking_threshold": 0.5,
     "min_fit_params": {
         "alpha_order": 0,
         "beta_order": 1,
