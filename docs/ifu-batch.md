@@ -48,12 +48,15 @@ again. For the second center on `00002/nrs2`, the unchanged template resolves to
 | Cube output | `outputs/batch-01/00002_nrs2_40_35_hyphenated.fits.gz` |
 | Log | `outputs/batch-01/00002_nrs2_40_35_hyphenated.log` |
 
-Expect eight basenames `FRAME_DETECTOR_PIXEL_hyphenated`, each with `.fits.gz`,
+With the shown recipe, expect eight basenames `FRAME_DETECTOR_PIXEL_hyphenated`,
+each with `.fits.gz`,
 `.log`, `.pdf`, `.pkl.gz.npz` and `.pkl.gz.json`: 40 files for a completed run.
 The four `[38,33]` cubes are intermediate; the four `[40,35]` cubes are the final
-chained products. Keep plots enabled for current fit-sidecar saving. Setting
-`perform_dewiggling: false` loads saved fits and still writes cubes. Load only
-trusted fit artifacts because loading permits pickle.
+chained products. Each initial IFU pass saves the pair even with plots disabled;
+a save error stops before writing that pass's cube. The pair precedes retries.
+`perform_dewiggling: false` loads it without rewriting it, but still writes cubes
+and can refit with `mask_bad_fits: true`. Load only trusted artifacts because
+loading permits pickle.
 
 Inspect all products, log errors, fitted coverage, SCI shape/WCS, finite masks and
 diagnostic spectra for both passes. With `mask_bad_fits: false`, quality failures

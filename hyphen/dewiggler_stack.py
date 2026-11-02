@@ -2516,8 +2516,7 @@ def dewiggler_stack_ifu(
             delayed(dewiggle_main_loop)(i)
             for i in range(len(wiggly_pixels[0]))[::diagnostic_fraction]
         )
-        if get_plot_status(plot):
-            _save_fit_results(xsols, xsol_fn)
+        _save_fit_results(xsols, xsol_fn)
     else:
         xsols = _load_fit_results(xsol_fn)
 

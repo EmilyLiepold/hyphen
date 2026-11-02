@@ -211,7 +211,9 @@ trust through understandable code and scientific evidence.
   construction consumes the global random stream. Preserve the specified case
   order and process boundaries; do not assume cases can be reordered or split
   into fresh processes without changing results. Record worker and plotting
-  settings too; current fit sidecar saving depends on plotting.
+  settings too. IFU initial fits save sidecars independently of plotting; save
+  errors stop before the final cube write. The pair precedes retries; replay loads
+  it without rewriting it. MSA sidecar saving still depends on plotting.
   Compare science arrays, finite/NaN masks, fitted coverage and relevant metadata,
   not regenerated gzip bytes or volatile timestamps. A merged reference must use
   the same selected inputs and settings as the candidate. Preserved outputs provide
