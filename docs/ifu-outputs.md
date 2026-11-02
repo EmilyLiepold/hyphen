@@ -81,6 +81,10 @@ loads saved fits without rewriting the pair, but still writes a cube and can
 refit if `mask_bad_fits: true`.
 Replay needs matching input data, selected spaxel order and settings, including
 `diagnostic_fraction`; it is not a dry run or a guaranteed no-refitting mode.
+IFU replay requires a positive integer `diagnostic_fraction` (not a Boolean) and
+requires saved coordinates to match the current sampled pixels in order before
+per-spaxel plots, retries or final cube writing. Setup may already have effects.
+This coordinate check does not verify pair integrity or input/settings identity.
 
 ## Inspect one spectrum
 
