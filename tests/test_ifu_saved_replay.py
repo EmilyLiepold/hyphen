@@ -1,4 +1,4 @@
-"""Exercise plotted first-pass fitting, actual sidecars, then unplotted replay."""
+"""Exercise initial-fit persistence, save failures and load-only IFU replay."""
 import hashlib
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
+import pytest
 
 from hyphen import dewiggler_stack as stack
 
@@ -19,9 +20,11 @@ def diagnostic_page(pdf, *args, **kwargs):
         plt.close(fig)
 
 
-def test_ifu_plotted_fit_saves_and_unplotted_replay_uses_pair(monkeypatch, tmp_path):
+@pytest.mark.parametrize("plotted", [True, False])
+@pytest.mark.parametrize("save_fails", [False, True])
+def test_ifu_initial_fit_saves_and_replay_uses_pair(monkeypatch, tmp_path, plotted, save_fails):
     original = np.arange(12., dtype=float).reshape(3, 2, 2) + 10
-    written, loaded, rendered = [], [], []
+    written, loaded, rendered, pages = [], [], [], []
 
     class Cube(list):
         def writeto(self, *args, **kwargs):
@@ -54,9 +57,15 @@ def test_ifu_plotted_fit_saves_and_unplotted_replay_uses_pair(monkeypatch, tmp_p
     )
     for name, value in replacements.items():
         monkeypatch.setattr(stack, name, value)
+
+    def observe_page(pdf, *args, **kwargs):
+        if pdf:
+            pages.append(True)
+        diagnostic_page(pdf, *args, **kwargs)
+
     for name in ["build_image_map_ifu", "build_reference_spectra_plot",
                  "build_bar_map_plot", "build_spaxel_map_plot_ifu"]:
-        monkeypatch.setattr(stack, name, diagnostic_page)
+        monkeypatch.setattr(stack, name, observe_page)
 
     def chunk(**kwargs):
         rendered.extend(row[2] for row in kwargs["xsols_chunk"])
@@ -79,11 +88,23 @@ def test_ifu_plotted_fit_saves_and_unplotted_replay_uses_pair(monkeypatch, tmp_p
     output = tmp_path / "corrected.fits"
     options = dict(n_jobs=1, use_cached_wcs=False, mask_bad_fits=False,
                    target_wiggle_pixels=[[1, 1], [2, 2]], null_fit_improvement_threshold=-1)
-    stack.dewiggler_stack_ifu("detector", "cube", str(output),
-                             plot=str(tmp_path / "fit.pdf"), **options)
+    initial = dict(plot=str(tmp_path / "fit.pdf") if plotted else False, **options)
+    if save_fails:
+        save.side_effect = OSError("controlled sidecar write failure")
+        with pytest.raises(OSError, match="controlled sidecar write failure"):
+            stack.dewiggler_stack_ifu("detector", "cube", str(output), **initial)
+        save.assert_called_once()
+        assert fitter.call_count == 2
+        assert not written and not loaded and not rendered
+        assert plotted or not pages
+        return
+    stack.dewiggler_stack_ifu("detector", "cube", str(output), **initial)
     assert fitter.call_count == 2
     save.assert_called_once()
-    assert loaded == [] and rendered == [[0, 0], [1, 1]]
+    expected_rendered = [[0, 0], [1, 1]] if plotted else []
+    assert loaded == [] and rendered == expected_rendered
+    assert bool(pages) is plotted
+    initial_page_count = len(pages)
     base = str(output).replace(".fits", ".pkl")
     pair = [Path(base + suffix) for suffix in [".npz", ".json"]]
     assert all(p.is_file() for p in pair)
@@ -95,7 +116,7 @@ def test_ifu_plotted_fit_saves_and_unplotted_replay_uses_pair(monkeypatch, tmp_p
     fitter.assert_not_called()
     assert save.call_count == 1 and len(loaded) == 1
     assert [hashlib.sha256(p.read_bytes()).hexdigest() for p in pair] == before
-    assert rendered == [[0, 0], [1, 1]]
+    assert rendered == expected_rendered and len(pages) == initial_page_count
     saved = save.call_args.args[0]
     assert len(saved) == len(loaded[0]) == 2
     for first, replay in zip(saved, loaded[0]):

@@ -32,10 +32,11 @@ working directory, even if the YAML is moved into `configs/`. `FRAME` and
 
 For the shown frame/detector and unchanged output paths, expect
 `outputs/run-01/00001_nrs1_hyphenated` with suffixes `.fits.gz`, `.log`, `.pdf`,
-`.pkl.gz.npz` and `.pkl.gz.json`. Keep plots enabled: current fit-sidecar saving
-depends on plotting. `perform_dewiggling: false` loads saved fits and still writes
-the output cube; it is not a dry run. Load only trusted fit artifacts because
-loading permits pickle.
+`.pkl.gz.npz` and `.pkl.gz.json`. Initial IFU fits save the pair even with plots
+disabled; a save error stops before the final cube write. The pair captures the
+initial pass, before retries. `perform_dewiggling: false` loads it without
+rewriting it, but still writes the cube and can refit with `mask_bad_fits: true`;
+it is not a dry run. Load only trusted artifacts because loading permits pickle.
 
 Check all expected products, log errors, fitted coverage, SCI shape/WCS, finite
 masks and diagnostic spectra. With `mask_bad_fits: false`, quality failures remain

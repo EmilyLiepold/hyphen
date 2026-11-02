@@ -66,16 +66,19 @@ preservation of real spectral features; empty/zero transforms need separate revi
 
 ## Saved fits and replay
 
-For `name.fits.gz`, expect `name.pkl.gz.npz` and `name.pkl.gz.json` when plots
-are enabled. Current saving depends on plotting. Keep the pair, original inputs,
-resolved settings, environment and revision together. JSON rows and NPZ rows
-must stay aligned: never independently sort or substitute one file. Loading
+For an initial IFU fit writing `name.fits.gz`, expect `name.pkl.gz.npz` and
+`name.pkl.gz.json` even when plotting is disabled. A save error propagates before
+the final cube write; an interrupted save can leave an incomplete pair. Keep the
+pair, original inputs, resolved settings, environment and revision together.
+JSON rows and NPZ rows must stay aligned: never independently sort or substitute one file. Loading
 allows pickle; use only trusted artifacts. Do not treat this pair as a complete
 provenance record or assume a legacy DILL file is interchangeable.
+MSA remains experimental and saves sidecars only with plotting enabled.
 
 Saved fits and PDFs capture the initial pass, before the later quality/retry
 loop; they can differ from final SCI after retries. `perform_dewiggling: false`
-loads saved fits but still writes a cube and can refit if `mask_bad_fits: true`.
+loads saved fits without rewriting the pair, but still writes a cube and can
+refit if `mask_bad_fits: true`.
 Replay needs matching input data, selected spaxel order and settings, including
 `diagnostic_fraction`; it is not a dry run or a guaranteed no-refitting mode.
 
