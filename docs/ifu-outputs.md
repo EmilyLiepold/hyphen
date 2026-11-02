@@ -20,12 +20,23 @@ SCI, no samples after masking with valid normalization, or no positive weights
 when weight masking is enabled. Processing continues with the next spectrum.
 A successful retry retains its corrected SCI and adds no DQ bits.
 
-Other errors escaping the fitter's existing handlers propagate and prevent the
-final cube write; invalid reference normalization is one example. Initial-pass
-errors still propagate. Missing FFT diagnostics and no-adopted-fit results need
-separate handling; this retry correction does not resolve them. With
-`mask_bad_fits: false`, no retry or new failure DQ flags are added. ERR and WMAP
-are retained, so ERR excludes uncertainty from the fitted wiggle correction.
+Fourier and RMS quality checks are independent:
+
+- An unavailable Fourier diagnostic is logged as **unassessed** and treated as
+  a bad fit. With masking enabled, Hyphen retries and masks a still-bad fit as
+  described above. With masking disabled, it retains the returned spectrum and
+  continues without adding failure DQ flags.
+- A finite, nonempty all-zero residual FFT passes the Fourier check. It can
+  still fail the RMS check, which measures the fitted normalized residual as
+  √ν; its calculation is described below.
+
+Malformed FFT array shapes raise an error. Optional plotting runs before these
+quality checks and can still fail before they are reached. Other errors escaping
+the fitter's existing handlers propagate and prevent the final cube write;
+invalid reference normalization is one example. Initial-pass errors still
+propagate. With `mask_bad_fits: false`, no retry or new failure DQ flags are
+added. ERR and WMAP are retained, so ERR excludes uncertainty from the fitted
+wiggle correction.
 
 Read the `.log` alongside spectra: it records spaxel coordinates, radius in
 arcseconds, trial/adopted orders, fit statistics and quality/retry messages.
