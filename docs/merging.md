@@ -37,6 +37,9 @@ in `outputs/merge-01`; no PDF or gap cache. Forced reload still writes array cac
 `mask_gap_union:false` bypasses extra union-gap masking; the current gap finder can
 fail on no-gap spectra. DQ/nonpositive-weight/nonfinite/zero-flux and detector-
 coverage filtering still apply. Do not enable union masking without gap checks.
+For a valid gap union, every channel from the first through the last cached gap
+channel is masked, including both endpoints. Gap indices are zero-based.
+If no frame has a valid edge pair, the union step adds no gap mask.
 Inspect SCI/ERR, finite masks and zero WMAP coverage; WMAP is coverage, not inverse
 variance. DQ is inherited from the first cube, not recomputed. ERR excludes input
 covariance and fitted-model uncertainty. A completed command is not science acceptance.
