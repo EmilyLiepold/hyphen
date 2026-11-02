@@ -65,3 +65,5 @@ for coordinates, units, chaining, diagnostics and saved-fit limitations. The
 a scientific-validation caveat; review it before use.
 
 For merger pixel masks, see [merger mask options](docs/merger-mask-options.md).
+
+For merger cache behavior, see [merger caches](docs/merger-caches.md).
