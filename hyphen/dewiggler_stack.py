@@ -2644,33 +2644,45 @@ def dewiggler_stack_ifu(
             if fit_x2**0.5 > fractional_residual_threshold:
                 bad_fit = True
 
-            # Compute the amplitudes of the fft modes.
+            # A saved no-fit row can have missing or empty FFT arrays.
+            fft_ratio = None
+            zero_residual_fft = False
+            fft = x[4]
+            if 'freq' in fft and 'residual_fft' in fft:
+                fft_freq = np.asarray(fft['freq'], dtype=float)
+                residual_fft = np.asarray(fft['residual_fft'], dtype=complex)
+                if fft_freq.ndim != 1 or residual_fft.ndim != 1:
+                    raise ValueError("IFU FFT frequency and residual arrays must be one-dimensional")
+                if fft_freq.size and residual_fft.size:
+                    if fft_freq.shape != residual_fft.shape:
+                        raise ValueError("IFU FFT frequency and residual arrays must have matching lengths")
+                    if np.any(np.isfinite(fft_freq)):
+                        p1_indices = ((fft_freq >= 1 - fft_order_width) &
+                                      (fft_freq <= 1 + fft_order_width))
+                        if not np.any(p1_indices):
+                            p1_indices[np.argmin(np.abs(fft_freq - 1.0))] = True
+                        amplitudes = np.abs(residual_fft)
+                        if np.all(np.isfinite(fft_freq)) and np.all(np.isfinite(amplitudes)) and not np.any(amplitudes):
+                            fft_ratio = 0.0
+                            zero_residual_fft = True
+                        elif np.any(np.isfinite(amplitudes)) and np.any(np.isfinite(amplitudes[p1_indices])):
+                            p1 = np.nanmean(amplitudes[p1_indices])
+                            pavg = np.nanmean(amplitudes)
+                            if np.isfinite(p1) and np.isfinite(pavg) and pavg > 0:
+                                fft_ratio = p1 / pavg
 
-            # First, make sure that 'freq' is in the dictionary:
-            if 'freq' in x[4].keys():
-                fft_freq = x[4]['freq']
-                p1_indices = (
-                    (fft_freq[:] >= 1 - fft_order_width) &
-                    (fft_freq[:] <= 1 + fft_order_width)
-                )
-
-                if sum(p1_indices) == 0:
-                    p1_indices[np.argmin(np.abs(fft_freq - 1.0))] = True
-
-                p1 = np.nanmean(np.abs(x[4]['residual_fft'][p1_indices]))
-                pavg = np.nanmean(np.abs(x[4]['residual_fft']))
-                logger.info('')
-
-                if p1 / pavg > power_ratio_threshold:
-                    bad_fit = True
-
-                logger.info(
-                    f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
-                    f"{fit_x2**0.5:.4f}."
-                    f"    and P(1) / P(3/2) = {p1 / pavg:.4f}."
-                )
-            else:
+            if fft_ratio is None:
                 bad_fit = True
+                fft_report = "Fourier diagnostic unassessed"
+            else:
+                if not zero_residual_fft and fft_ratio > power_ratio_threshold:
+                    bad_fit = True
+                fft_report = f"P(1) / P(3/2) = {fft_ratio:.4f}"
+
+            logger.info(
+                f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
+                f"{fit_x2**0.5:.4f}.    and {fft_report}."
+            )
 
             if mask_bad_fits & bad_fit:
                 if retry_allowed:
@@ -2688,18 +2700,6 @@ def dewiggler_stack_ifu(
                 logger.warning("Masking this pixel.")
                 preferred_dewiggled_spectrum = np.full_like(preferred_dewiggled_spectrum, np.nan)
                 frame_3d[3].data[:, target_index[0], target_index[1]] |= dqflags.pixel["DO_NOT_USE"]
-
-                logger.info(
-                    f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
-                    f"{fit_x2**0.5:.4f}."
-                    f"    and P(1) / P(3/2) = {p1 / pavg:.4f}."
-                )
-            else:
-                logger.info(
-                    f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
-                    f"{fit_x2**0.5:.4f}."
-                    f"    and P(1) / P(3/2) = {p1 / pavg:.4f}."
-                )
 
             logger.info('')
 
