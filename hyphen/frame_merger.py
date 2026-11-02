@@ -788,6 +788,13 @@ def find_targeted_file_name(input_filenames, target_frame, target_detector):
 
 def parse_yaml_arguments_and_merge(getter):
 
+    missing = object()
+    for name in ("mask_filename", "mask_file"):
+        if getter(name, missing) is not missing:
+            raise ValueError(
+                f"{name} is deprecated; remove it and specify masks with mask_config."
+            )
+
     input_filename_prototype = getter("input_filename_prototype")
     target_detectors = getter("target_detectors")
 

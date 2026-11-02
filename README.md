@@ -63,3 +63,5 @@ See the [single-IFU guide](docs/ifu-single.md), [batch-IFU guide](docs/ifu-batch
 for coordinates, units, chaining, diagnostics and saved-fit limitations. The
 [merging guide](docs/merging.md) requires compatible registered cubes and retains
 a scientific-validation caveat; review it before use.
+
+For merger pixel masks, see [merger mask options](docs/merger-mask-options.md).
