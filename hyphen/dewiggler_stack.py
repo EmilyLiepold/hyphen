@@ -151,6 +151,28 @@ def _load_fit_results(base_filename: str) -> list:
     return xsols
 
 
+def _validate_ifu_replay_pixels(xsols, wiggly_pixels, diagnostic_fraction):
+    """Require saved coordinates to match the current sampled IFU selection."""
+    if (isinstance(diagnostic_fraction, (bool, np.bool_)) or
+            not isinstance(diagnostic_fraction, (int, np.integer)) or
+            diagnostic_fraction <= 0):
+        raise ValueError("IFU replay diagnostic_fraction must be a positive integer")
+
+    def integer_pair(value):
+        return (isinstance(value, (list, tuple)) and len(value) == 2 and
+                all(isinstance(v, (int, np.integer)) and
+                    not isinstance(v, (bool, np.bool_)) for v in value))
+
+    if wiggly_pixels.ndim != 2 or wiggly_pixels.shape[0] != 2:
+        raise ValueError("IFU replay requires a two-axis pixel selection")
+    sampled = wiggly_pixels[:, ::diagnostic_fraction].T.tolist()
+    saved = [row[2] for row in xsols]
+    if (len(saved) != len(sampled) or any(
+            not integer_pair(a) or not integer_pair(b) or tuple(a) != tuple(b)
+            for a, b in zip(saved, sampled))):
+        raise ValueError("IFU replay saved coordinates must match the current sampled pixels")
+
+
 def _flush_spaxel_logs(xsols: list) -> None:
     """Write captured per-spaxel fit logs into the root logger's file stream."""
     root_handlers = [
@@ -2519,6 +2541,7 @@ def dewiggler_stack_ifu(
         _save_fit_results(xsols, xsol_fn)
     else:
         xsols = _load_fit_results(xsol_fn)
+        _validate_ifu_replay_pixels(xsols, wiggly_pixels, diagnostic_fraction)
 
     _flush_spaxel_logs(xsols)
 
