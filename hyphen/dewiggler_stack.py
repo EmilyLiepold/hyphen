@@ -1697,8 +1697,16 @@ def get_2d_trace_model(wcs_2d: WCS,
     pf_x_lib = pf_x_lib.T
     pf_y_lib = pf_y_lib.T
 
+    valid_ra_rad = np.deg2rad(valid_ra)
+    valid_dec_rad = np.deg2rad(valid_dec)
+    cos_valid_dec = np.cos(valid_dec_rad)
+
     def trace_factory(ra, dec):
-        d2 = (valid_ra - ra) ** 2 + (valid_dec - dec) ** 2
+        ra_rad, dec_rad = np.deg2rad([ra, dec])
+        # Haversine ranks spherical separation, including RA wrapping.
+        d2 = (np.sin((valid_dec_rad - dec_rad) / 2) ** 2
+              + cos_valid_dec * np.cos(dec_rad)
+              * np.sin((valid_ra_rad - ra_rad) / 2) ** 2)
         closest_index = np.argmin(d2)
 
         pf_x = pf_x_lib[closest_index]
