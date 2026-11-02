@@ -182,6 +182,12 @@ def load_frames(
         - frames (list[list[fits.HDUList]]): The list of FITS HDUList objects.
     """
 
+    if mask_config is not None:
+        for entry in mask_config:
+            frame_idx = entry.get("frame_idx")
+            if frame_idx is not None and not (0 <= frame_idx < len(primary_fns)):
+                raise ValueError(f"frame_idx {frame_idx} out of bounds (0..{len(primary_fns)-1})")
+
     fluxes = np.empty(1, dtype=np.float64)
     variances = np.empty(1, dtype=np.float64)
     dqs = np.empty(1, dtype=np.float64)
