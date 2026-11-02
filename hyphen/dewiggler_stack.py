@@ -14,6 +14,7 @@ from astropy.coordinates import SkyCoord
 from astropy import units as u
 from stdatamodels.jwst.datamodels import IFUImageModel
 from stdatamodels.jwst.datamodels import MultiSlitModel
+from stdatamodels.jwst.datamodels import dqflags
 from joblib import delayed
 import dill as d
 import json
@@ -172,7 +173,7 @@ warnings.filterwarnings("error", message="Mean of empty slice")
 warnings.filterwarnings("error", message="invalid value encountered in scalar divide")
 
 from .tracer_helpers import find_bars, infer_fractional_position
-from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args, plot_dewiggle_result
+from .dewiggle_lambda_space import dewiggle_lambda_space, parse_wiggle_args, plot_dewiggle_result, UnusableSpectrumError
 from .yaml_helpers import ingest_yaml
 from .helpers import ProgressParallel, get_ybounds
 from .single_dewiggle_ifu_step import (single_dewiggle_ifu_default_options,
@@ -2241,6 +2242,8 @@ def dewiggler_stack_ifu(
 
             if weight_based_masking_threshold is not None:
                 weight_spectrum = _wgt_data[:, target_index[0], target_index[1]]
+                if not np.any(weight_spectrum > 0.0):
+                    raise UnusableSpectrumError("No positive WMAP samples")
                 median_weight = np.nanmedian(weight_spectrum[weight_spectrum > 0.0])
                 weight_based_mask = (
                     weight_spectrum > weight_based_masking_threshold * median_weight
@@ -2601,12 +2604,11 @@ def dewiggler_stack_ifu(
 
     for xindex, x in enumerate(xsols):
 
-        bad_fit = False
-
         retries = 0
         retry_allowed = True
 
         while retry_allowed:
+            bad_fit = False
 
             if retries == 1:
                 retry_allowed = False
@@ -2649,20 +2651,21 @@ def dewiggler_stack_ifu(
                 bad_fit = True
 
             if mask_bad_fits & bad_fit:
-                logger.warning("Masking this pixel.")
-
                 if retry_allowed:
+                    logger.warning("Retrying this pixel.")
                     try:
-                        frame_3d[1].data[:, target_index[0], target_index[1]] = \
-                            preferred_dewiggled_spectrum
                         x = dewiggle_main_loop(xindex * diagnostic_fraction)
-                    except Exception as e:
+                    except UnusableSpectrumError as e:
                         logger.warning(
                             f"Error in dewiggle_main_loop: {e}"
                         )
-                        preferred_dewiggled_spectrum = (
-                            np.ones_like(preferred_dewiggled_spectrum) * np.nan
-                        )
+                        retry_allowed = False
+                    else:
+                        continue
+
+                logger.warning("Masking this pixel.")
+                preferred_dewiggled_spectrum = np.full_like(preferred_dewiggled_spectrum, np.nan)
+                frame_3d[3].data[:, target_index[0], target_index[1]] |= dqflags.pixel["DO_NOT_USE"]
 
                 logger.info(
                     f"Pixel ({target_index[0]}, {target_index[1]}) has √𝜈 = "
@@ -2680,6 +2683,7 @@ def dewiggler_stack_ifu(
 
             frame_3d[1].data[:, target_index[0], target_index[1]] = \
                 preferred_dewiggled_spectrum
+            break
 
     logger.info("Saving dewiggled frame")
 

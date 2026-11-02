@@ -9,6 +9,10 @@ from functools import partial
 logger = logging.getLogger(__name__)
 
 
+class UnusableSpectrumError(ValueError):
+    """No usable input samples remain for fitting this spectrum."""
+
+
 def _eval_pf(
     pf: Union[np.ndarray, Callable, None],
     x: np.ndarray,
@@ -1091,6 +1095,8 @@ def dewiggle_lambda_space(
 
     normalization = _eval_pf(continuum_model, lam)
     good_indices = np.isfinite(target_spectrum)
+    if not np.any(good_indices):
+        raise UnusableSpectrumError("No finite input SCI samples")
 
     logger.debug(
         f"The continuum model polynomial parameters are {continuum_model}",
@@ -1100,6 +1106,8 @@ def dewiggle_lambda_space(
     logger.debug(f" and np.nanmax = {np.nanmax(target_spectrum[good_indices])}")
 
     normalized_spectrum = target_spectrum / normalization
+    if not np.any(np.isfinite(normalized_spectrum[good_indices])):
+        raise ValueError("Reference normalization leaves no finite SCI samples")
     logger.debug(
         f"The normalized_spectrum has np.nanmin = "
         f"{np.nanmin(normalized_spectrum[good_indices])} and np.nanmax = "
@@ -1107,6 +1115,8 @@ def dewiggle_lambda_space(
     )
 
     normalization_constant = np.nanmedian(normalized_spectrum[good_indices])
+    if not np.isfinite(normalization_constant) or normalization_constant == 0:
+        raise ValueError("SCI normalization constant must be finite and nonzero")
     logger.debug(
         f"The input lambda run from {lam[0]} to {lam[-1]}, with min = {np.min(lam)} "
         f"and max = {np.max(lam)}"
@@ -1134,6 +1144,8 @@ def dewiggle_lambda_space(
     )
     if target_maskarray is not None:
         good_indices = good_indices * target_maskarray
+    if not np.any(good_indices):
+        raise UnusableSpectrumError("No samples remain after SCI/DQ/mask selection")
 
     med_px = trace_model[0][0](lam) * frequency_fudge
     med_px -= np.nanmedian(med_px)
