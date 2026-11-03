@@ -20,7 +20,14 @@ def labeled_page(pdf, label):
 
 
 @pytest.mark.parametrize("supplied_pdf", [False, True])
-def test_ifu_keeps_overview_and_orders_all_chunk_pages(monkeypatch, tmp_path, supplied_pdf):
+@pytest.mark.parametrize(
+    "n_jobs, effective, row_count, expected_chunks",
+    [(11, None, 11, 11), (6, None, 10, 5),
+     (-1, 6, 10, 5), (-2, 4, 11, 4), (-1, 20, 10, 10)],
+)
+def test_ifu_keeps_overview_and_orders_all_chunk_pages(
+    monkeypatch, tmp_path, supplied_pdf, n_jobs, effective, row_count, expected_chunks
+):
     data = np.ones((3, 4, 4))
     hdus = [None, SimpleNamespace(data=data.copy()), None,
             SimpleNamespace(data=np.zeros_like(data)), SimpleNamespace(data=data)]
@@ -28,7 +35,7 @@ def test_ifu_keeps_overview_and_orders_all_chunk_pages(monkeypatch, tmp_path, su
     cube.__getitem__ = Mock(side_effect=hdus.__getitem__)
     detector = [SimpleNamespace(data=np.ones((4, 4)))] * 8
     distance = np.hypot(*np.meshgrid(np.arange(4) * 0.4, np.arange(4) * 0.4))
-    positions = [(i // 4, i % 4) for i in range(11)]
+    positions = [(i // 4, i % 4) for i in range(row_count)]
     fft = {"freq": np.array([1.]), "residual_fft": np.array([1.])}
     rows = [(None, {}, pos, np.ones(3), fft, 0.0001, "", 0) for pos in positions]
     replacements = dict(
@@ -51,10 +58,19 @@ def test_ifu_keeps_overview_and_orders_all_chunk_pages(monkeypatch, tmp_path, su
         monkeypatch.setattr(stack, name, value)
 
     completed = []
+    covered = []
+    effective_requests = []
+    parallel_requests = []
+
+    def effective_workers(requested):
+        effective_requests.append(requested)
+        return effective
+
+    monkeypatch.setattr(stack, "effective_n_jobs", effective_workers, raising=False)
 
     class SerialReversed:
         def __init__(self, **kwargs):
-            pass
+            parallel_requests.append(kwargs)
 
         def __call__(self, jobs):
             result = [function(*args, **kwargs) for function, args, kwargs in jobs]
@@ -62,11 +78,16 @@ def test_ifu_keeps_overview_and_orders_all_chunk_pages(monkeypatch, tmp_path, su
 
     def chunk(**kwargs):
         index = kwargs["chunk_idx"]
+        chunk_rows = kwargs["xsols_chunk"]
+        assert chunk_rows
         path = Path(kwargs["tmpdir"]) / f"chunk_{index}.pdf"
         with PdfPages(path) as pdf:
-            labeled_page(pdf, f"SPAXEL-{index:02d}")
-            if index == 0:
-                labeled_page(pdf, "SPAXEL-00-EXTRA")
+            for offset, row in enumerate(chunk_rows):
+                row_index = kwargs["base_index"] + offset
+                covered.append(row[2])
+                labeled_page(pdf, f"SPAXEL-{row_index:02d}")
+                if row_index == 0:
+                    labeled_page(pdf, "SPAXEL-00-EXTRA")
         completed.append(index)
         return str(path), ""
 
@@ -79,18 +100,22 @@ def test_ifu_keeps_overview_and_orders_all_chunk_pages(monkeypatch, tmp_path, su
     try:
         stack.dewiggler_stack_ifu(
             "synthetic-detector", "synthetic-cube", str(tmp_path / "unused.fits"),
-            plot=plot, perform_dewiggling=False, n_jobs=11, use_cached_wcs=False,
+            plot=plot, perform_dewiggling=False, n_jobs=n_jobs, use_cached_wcs=False,
             target_wiggle_pixels=[[col + 1, row + 1] for row, col in positions],
             mask_bad_fits=False,
         )
     finally:
         if supplied_pdf:
             plot.close()
-    assert completed == list(range(11))
+    assert effective_requests == ([n_jobs] if n_jobs < 0 else [])
+    assert parallel_requests[0]["n_jobs"] == n_jobs
+    assert parallel_requests[0]["total"] == expected_chunks
+    assert completed == list(range(expected_chunks))
+    assert covered == positions
     texts = [page.extract_text() for page in PdfReader(destination).pages]
     expected = (["PREEXISTING"] if supplied_pdf else []) + [
         "Median image of PDF-FIXTURE", "REFERENCES", "BARS", "SPAXEL-00",
-        "SPAXEL-00-EXTRA", *[f"SPAXEL-{i:02d}" for i in range(1, 11)],
+        "SPAXEL-00-EXTRA", *[f"SPAXEL-{i:02d}" for i in range(1, row_count)],
     ]
     assert len(texts) == len(expected)
     for text, identity in zip(texts, expected):

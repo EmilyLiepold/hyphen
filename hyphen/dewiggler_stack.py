@@ -15,7 +15,7 @@ from astropy import units as u
 from stdatamodels.jwst.datamodels import IFUImageModel
 from stdatamodels.jwst.datamodels import MultiSlitModel
 from stdatamodels.jwst.datamodels import dqflags
-from joblib import delayed
+from joblib import delayed, effective_n_jobs
 import dill as d
 import json
 import pickle
@@ -2563,8 +2563,12 @@ def dewiggler_stack_ifu(
     if get_plot_status(plot):
         logger.info("Plotting: regenerating diagnostic plots from saved fit results")
 
-        n_chunks = max(1, min(n_jobs, len(xsols)))
+        plot_jobs = effective_n_jobs(n_jobs) if n_jobs < 0 else n_jobs
+        n_chunks = max(1, min(plot_jobs, len(xsols)))
         chunk_size = (len(xsols) + n_chunks - 1) // n_chunks
+        if chunk_size:
+            # Ceil-sized slices may leave empty chunks at the end.
+            n_chunks = (len(xsols) + chunk_size - 1) // chunk_size
 
         with tempfile.TemporaryDirectory() as tmpdir:
             chunk_results = ProgressParallel(
