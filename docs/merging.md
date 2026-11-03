@@ -45,6 +45,13 @@ The guard checks only the literal directory in the `mkdir` command. If you edit
 `output_filename`, change that command to the same fresh directory; separately
 check any diagnostic plot path for existing files.
 
+For this example, choose `.fits` (uncompressed) or `.fits.gz` (gzip).
+Before creating the output directory, check every ancestor name and the
+filename stem for extra lowercase `.fits` or `.gz` strings; do not use them.
+Hyphen removes these strings throughout the path when deriving log and cache
+names, so even a fresh output directory can reuse or overwrite files elsewhere.
+This naming restriction is not checked automatically.
+
 Use a new directory/basename each run: outputs/logs overwrite and caches lack full
 input provenance. A warning is logged when cached frame arrays or gap edges are
 used because their inputs and settings cannot be reliably checked. Relative
