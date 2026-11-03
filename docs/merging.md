@@ -1,9 +1,9 @@
 # Merge four corrected cubes
 
-This [template](../examples/merge.yaml) is **unexecuted**. Scientific use requires
-the pending merger ERR/cache correction, human review and real-data validation.
-The baseline incorrectly combines standard-deviation ERR as variance; the pending
-correction uses independent-input variances and writes standard-deviation ERR.
+This [template](../examples/merge.yaml) is **unexecuted** as a complete
+walkthrough. Input `ERR` is a standard deviation. The merger squares it to
+combine independent-input variances with the weights, then writes the square
+root as output `ERR`. Inspect the result and diagnostics for your science use.
 
 Requires an installed `hyphenate` CLI and four trusted, complete corrected FITS
 cubes: `00001`/`00002` crossed with `nrs1`/`nrs2`, named as the template expands.
@@ -35,13 +35,17 @@ Run from the checkout root after editing the copy:
 cp examples/merge.yaml merge.local.yaml
 # Edit merge.local.yaml; review every path, grid, region and center.
 mkdir -p outputs
-mkdir outputs/merge-01
-hyphenate merge.local.yaml
+mkdir outputs/merge-01 && hyphenate merge.local.yaml
 ```
 
+If `outputs/merge-01` already exists, `mkdir` fails and `&&` prevents Hyphen
+from starting. Choose a fresh directory and update the YAML output paths.
+
 Use a new directory/basename each run: outputs/logs overwrite and caches lack full
-input provenance. Relative outputs resolve from the launch directory. After the
-pending correction, expect `merged.fits.gz`, `merged.log`, `merged_cached_v2.npz`
+input provenance. A warning is logged when cached frame arrays or gap edges are
+used because their inputs and settings cannot be reliably checked. Relative
+outputs resolve from the launch directory. Expect `merged.fits.gz`, `merged.log`,
+`merged_cached_v2.npz`
 in `outputs/merge-01`; no PDF or gap cache. Forced reload still writes array caches.
 `mask_gap_union:false` bypasses extra union-gap masking. With union masking enabled,
 an exposure with usable weights but no detected gap adds no gap to the union;
