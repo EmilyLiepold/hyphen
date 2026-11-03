@@ -129,22 +129,31 @@ def _load_fit_results(base_filename: str) -> list:
     model_details = metadata["model_details"]
     log_strings = metadata["log_strings"]
 
+    # NpzFile decompresses each member on access; retain each array after its
+    # first use while preserving lazy access order and zero-row behavior.
+    members = {}
+
+    def member(name):
+        if name not in members:
+            members[name] = data[name]
+        return members[name]
+
     xsols = []
     for i in range(n):
         wiggle_fft = {
-            "freq": data["fft_freqs"][i],
-            "spectrum_fft": data["fft_spectra"][i],
-            "residual_fft": data["fft_residuals"][i],
+            "freq": member("fft_freqs")[i],
+            "spectrum_fft": member("fft_spectra")[i],
+            "residual_fft": member("fft_residuals")[i],
         }
         xsols.append((
-            data["xsols"][i],
+            member("xsols")[i],
             model_details[i],
-            data["target_indices"][i].tolist(),
-            data["dewiggled_spectra"][i],
+            member("target_indices")[i].tolist(),
+            member("dewiggled_spectra")[i],
             wiggle_fft,
-            float(data["base_x2s"][i]),
+            float(member("base_x2s")[i]),
             log_strings[i],
-            data['target_slices'][i]
+            member("target_slices")[i]
         ))
 
     data.close()
