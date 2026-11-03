@@ -6,6 +6,7 @@ import numpy as np
 from astropy.io import fits
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from stdatamodels.jwst.datamodels import dqflags
 
 from .yaml_helpers import ingest_yaml
 from .helpers import wigglebar
@@ -736,6 +737,8 @@ def frame_merge(
     good = weights > 0
     fluxes[good] = fluxes[good] / weights[good]
     variances[good] = variances[good] / (weights[good] * weights[good])
+    fluxes[~good] = np.nan
+    variances[~good] = np.nan
 
     if pdf is not None:
 
@@ -791,6 +794,10 @@ def frame_merge(
     np.sqrt(variances, out=variances)
     frames[0][0][2].data = variances[:]
     frames[0][0][4].data = weights[:]
+    output_dq = frames[0][0][3].data.copy()
+    output_dq[good] = 0
+    output_dq[~good] |= dqflags.pixel["DO_NOT_USE"]
+    frames[0][0][3].data = output_dq
 
     # Write the file
     frames[0][0].writeto(out_fn, overwrite=True)

@@ -55,10 +55,10 @@ def merge_pair(tmp_path, first_weights, second_weights, cached_edges=None):
 @pytest.mark.parametrize(
     "first, second, expected_sci, expected_weight",
     [([1] * 5, [1] * 5, [8] * 5, [2] * 5),
-     ([1, 1, 0, 1, 1], [1] * 5, [8, 8, 0, 8, 8], [2, 2, 0, 2, 2]),
+     ([1, 1, 0, 1, 1], [1] * 5, [8, 8, np.nan, 8, 8], [2, 2, 0, 2, 2]),
      ([0] * 5, [1] * 5, [10] * 5, [1] * 5),
      ([np.nan] * 5, [1] * 5, [10] * 5, [1] * 5),
-     ([1, 0, 1, 1, 1], [1, 1, 1, 0, 1], [8, 0, 0, 0, 8], [2, 0, 0, 0, 2])],
+     ([1, 0, 1, 1, 1], [1, 1, 1, 0, 1], [8, np.nan, np.nan, np.nan, 8], [2, 0, 0, 0, 2])],
     ids=["no-gap", "one-channel-gap", "zero-weight-frame", "nan-weight-frame",
          "different-gaps"],
 )
@@ -71,7 +71,7 @@ def test_fresh_gap_and_warm_cache(tmp_path, first, second, expected_sci, expecte
 def test_legacy_full_span_cache_does_not_expand_missing_frame(tmp_path):
     (sci, weight), edges = merge_pair(tmp_path, [0] * 5, [1, 1, 0, 1, 1],
                                       [(0, 4), (2, 2)])
-    np.testing.assert_array_equal(sci, [10, 10, 0, 10, 10])
+    np.testing.assert_array_equal(sci, [10, 10, np.nan, 10, 10])
     np.testing.assert_array_equal(weight, [1, 1, 0, 1, 1])
     np.testing.assert_array_equal(edges.reshape(2, 2), [(0, 4), (2, 2)])
 
@@ -80,7 +80,7 @@ def test_legacy_full_span_cache_does_not_expand_missing_frame(tmp_path):
 def test_partial_cached_pair_does_not_expand_complete_gap(tmp_path, partial):
     (sci, weight), _ = merge_pair(tmp_path, [1] * 5, [1] * 5,
                                   [(2, 2), partial])
-    np.testing.assert_array_equal(sci, [8, 8, 0, 8, 8])
+    np.testing.assert_array_equal(sci, [8, 8, np.nan, 8, 8])
     np.testing.assert_array_equal(weight, [2, 2, 0, 2, 2])
 
 
@@ -88,7 +88,7 @@ def test_partial_cached_pair_does_not_expand_complete_gap(tmp_path, partial):
 def test_out_of_array_or_fractional_pair_does_not_expand_union(tmp_path, invalid):
     (sci, weight), _ = merge_pair(tmp_path, [1] * 5, [1] * 5,
                                   [(2, 2), invalid])
-    np.testing.assert_array_equal(sci, [8, 8, 0, 8, 8])
+    np.testing.assert_array_equal(sci, [8, 8, np.nan, 8, 8])
     np.testing.assert_array_equal(weight, [2, 2, 0, 2, 2])
 
 
@@ -119,7 +119,7 @@ def test_non_square_spatial_grid_cold_and_warm_gap_cache(tmp_path):
     expected_weight[:, 0, 2] = 1
     for channel, row, col in [(2, 0, 1), (1, 1, 0), (2, 1, 0),
                               (3, 1, 0), (4, 1, 1), (0, 1, 2)]:
-        expected_sci[channel, row, col] = 0
+        expected_sci[channel, row, col] = np.nan
         expected_weight[channel, row, col] = 0
 
     output = tmp_path / "merged.fits"
