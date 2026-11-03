@@ -16,6 +16,7 @@ absent, it remains absent. The merger does not check agreement across inputs.
 Inspect detector overlap: detector arrays sum before exposure averaging.
 An explicit detector mask excludes that detector's SCI, weight, and variance
 at the masked pixel before detector summation.
+A detector sample with NaN ERR contributes no SCI, weight, or variance.
 In direct Python `mask_config`, `frame_idx` is a zero-based input-frame index:
 for two input frames, valid indices are 0 and 1.
 An out-of-range index raises before loader cache or FITS access; an omitted or
@@ -48,7 +49,7 @@ Use a new directory/basename each run: outputs/logs overwrite and caches lack fu
 input provenance. A warning is logged when cached frame arrays or gap edges are
 used because their inputs and settings cannot be reliably checked. Relative
 outputs resolve from the launch directory. Expect `merged.fits.gz`, `merged.log`,
-`merged_cached_v2.npz`
+`merged_cached_v3.npz`
 in `outputs/merge-01`; no PDF or gap cache. Forced reload still writes array caches.
 `mask_gap_union:false` bypasses extra union-gap masking. With union masking enabled,
 an exposure with usable weights but no detected gap adds no gap to the union;

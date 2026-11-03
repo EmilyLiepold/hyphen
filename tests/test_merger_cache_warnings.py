@@ -88,13 +88,13 @@ def test_gap_cache_hit_and_forced_reload(tmp_path, monkeypatch, caplog):
 @pytest.mark.parametrize("force", [False, True])
 def test_malformed_caches_still_raise_before_forced_reload(tmp_path, force):
     raw_base = tmp_path / "raw"
-    # The baseline and assembled candidate use different raw-cache suffixes.
-    for suffix in ("_cached.npz", "_cached_v2.npz"):
+    # The current cache is malformed; older cache names are retained as controls.
+    for suffix in ("_cached.npz", "_cached_v2.npz", "_cached_v3.npz"):
         np.savez_compressed(f"{raw_base}{suffix}", fluxes=[1])
     with pytest.raises(KeyError, match="variances"):
         frame_merger.load_frames([["unused.fits"]], str(raw_base), load_frames_from_disk=force)
     gap_base = tmp_path / "gap"
-    (tmp_path / "gap_gaps.npy").write_bytes(b"not a NumPy file")
+    (tmp_path / "gap_gaps_v3.npy").write_bytes(b"not a NumPy file")
     with pytest.raises(ValueError):
         frame_merger.determine_gap_edges(np.ones((1, 6, 1, 1)), str(gap_base), recompute_gaps=force)
 
@@ -104,7 +104,7 @@ def test_yaml_dispatch_writes_raw_cache_warning_to_merger_log(tmp_path, monkeypa
     _fits_file(filename)
     base = tmp_path / "merged"
     data = np.ones((1, 6, 1, 1), dtype=np.float32)
-    for suffix in ("_cached.npz", "_cached_v2.npz"):
+    for suffix in ("_cached.npz", "_cached_v2.npz", "_cached_v3.npz"):
         np.savez_compressed(f"{base}{suffix}", fluxes=data, variances=data, dqs=data, weights=data)
     config = tmp_path / "config.yaml"
     config.write_text(

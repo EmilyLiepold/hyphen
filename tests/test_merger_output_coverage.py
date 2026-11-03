@@ -26,7 +26,7 @@ def test_no_coverage_and_surviving_exposures_cold_and_warm(tmp_path, caplog):
     write_cube(first, [6, 6, 0, 6, 6], 2, 1, [high_bit | 4, 5, 0, 0, 0])
     write_cube(second, [10] * 5, 4, 3, [8, 0, 0, 8, 0])
     output = tmp_path / "merged.fits"
-    cache = tmp_path / "merged_cached_v2.npz"
+    cache = tmp_path / "merged_cached_v3.npz"
     caplog.set_level(logging.INFO, logger="hyphen.frame_merger")
 
     for phase in ("cold", "warm"):

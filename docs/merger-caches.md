@@ -5,6 +5,8 @@ using names derived from the output filename. Reusing an output name can reuse
 these caches. Hyphen cannot reliably verify that a cache matches the current input
 cubes or settings; a changed input or configuration can therefore yield stale
 results. The merger logs a warning when it actually uses cached arrays or gaps.
+Current names end in `_cached_v3.npz` and `_gaps_v3.npy`; older cache files
+are left in place and are not reused under these NaN-ERR semantics.
 For a YAML merger step, look in the output-derived `.log` file for these warnings.
 
 To recompute after changing inputs or settings, use a fresh output filename in a

@@ -33,7 +33,7 @@ def merge_pair(tmp_path, first_weights, second_weights, cached_edges=None):
         write_cube(path, flux, weights)
         inputs.append([str(path)])
     output = tmp_path / "merged.fits"
-    cache = tmp_path / "merged_gaps.npy"
+    cache = tmp_path / "merged_gaps_v3.npy"
     if cached_edges is not None:
         np.save(cache, np.asarray(cached_edges, dtype=float).reshape(1, 1, 2, 2))
 
@@ -132,4 +132,4 @@ def test_non_square_spatial_grid_cold_and_warm_gap_cache(tmp_path):
         with fits.open(output) as product:
             np.testing.assert_array_equal(product["SCI"].data, expected_sci)
             np.testing.assert_array_equal(product["WMAP"].data, expected_weight)
-    assert np.load(tmp_path / "merged_gaps.npy").shape == (3, 2, 2, 2)
+    assert np.load(tmp_path / "merged_gaps_v3.npy").shape == (3, 2, 2, 2)

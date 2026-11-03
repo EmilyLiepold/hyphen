@@ -101,7 +101,7 @@ def test_merger_variance_cache_rejects_legacy_and_reuses_warm(tmp_path, monkeypa
             assert product["SCI"].header["CRPIX3"] == 1.0
             assert product["SCI"].header["CRVAL3"] == 1.7
             assert product["SCI"].header["CDELT3"] == 0.01
-        with np.load(tmp_path / "merged_cached_v2.npz") as cache:
+        with np.load(tmp_path / "merged_cached_v3.npz") as cache:
             assert cache["variances"].dtype == np.float32
             np.testing.assert_allclose(cache["variances"], 5, rtol=1e-6, atol=1e-7)
         assert legacy.read_bytes() == legacy_bytes
