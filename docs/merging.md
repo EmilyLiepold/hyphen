@@ -20,7 +20,7 @@ In direct Python `mask_config`, `frame_idx` is a zero-based input-frame index:
 for two input frames, valid indices are 0 and 1.
 An out-of-range index raises before loader cache or FITS access; an omitted or
 null selector applies to all frames. YAML uses `frame` names, not `frame_idx`.
-Caller setup can already have created a log or diagnostic PDF.
+Caller setup can already have created a log or diagnostic PDF before this selector error.
 
 Review the half-open, zero-based wavelength-plane intervals `nrs1_region` and
 `nrs2_region` against your cubes; both are required detector-coverage checks.
@@ -57,6 +57,11 @@ pair for no detected gap or no usable weights; older code may not support this
 sentinel. Existing valid gap pairs remain readable. Recompute with a fresh
 output basename when inputs or settings change: caches do not verify provenance,
 and forced gap recomputation still attempts to read an existing gap cache first.
-Inspect SCI/ERR, finite masks and zero WMAP coverage; WMAP is coverage, not inverse
-variance. DQ is inherited from the first cube, not recomputed. ERR excludes input
-covariance and fitted-model uncertainty. A completed command is not science acceptance.
+Inspect SCI/ERR, finite masks and WMAP coverage; WMAP is coverage, not inverse
+variance. Voxels without surviving contributors have NaN SCI/ERR, zero WMAP,
+and `DO_NOT_USE` set in DQ; other DQ bits from the first cube are retained there.
+Where contributions survive, output DQ is zero: rejected inputs add no flags.
+Input DQ values other than zero are rejected. The zero-SCI check occurs after
+detector summation within a frame, not independently for each detector.
+ERR excludes input covariance and fitted-model uncertainty. A completed command
+is not science acceptance.

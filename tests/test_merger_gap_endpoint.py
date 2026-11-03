@@ -50,7 +50,7 @@ def test_gap_union_masks_both_inclusive_edges(tmp_path, edges, masked):
     expected_weight = np.full(5, 2.)
     expected_flux = np.full(5, 8.)
     expected_weight[masked] = 0
-    expected_flux[masked] = 0
+    expected_flux[masked] = np.nan
     with fits.open(output) as product:
         np.testing.assert_array_equal(product["WMAP"].data[:, 0, 0], expected_weight)
         np.testing.assert_array_equal(product["SCI"].data[:, 0, 0], expected_flux)
