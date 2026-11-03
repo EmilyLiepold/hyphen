@@ -279,6 +279,7 @@ def load_frames(
 
                         if filtered_config:
                             _apply_pixel_masks(temp_fluxes, filtered_config, "Flux")
+                            _apply_pixel_masks(temp_variances, filtered_config, "Variance")
                             _apply_pixel_masks(temp_weights, filtered_config, "Weight")
 
                     fluxes[frame_idx] = np.nansum(temp_fluxes, axis=1)[0]
