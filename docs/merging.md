@@ -14,6 +14,8 @@ HDU positions 1–4 must be SCI, ERR, DQ, WMAP, with consistent units and metada
 The output retains the first input's NFRAMES value and comment, if present; if
 absent, it remains absent. The merger does not check agreement across inputs.
 Inspect detector overlap: detector arrays sum before exposure averaging.
+An explicit detector mask excludes that detector's SCI, weight, and variance
+at the masked pixel before detector summation.
 In direct Python `mask_config`, `frame_idx` is a zero-based input-frame index:
 for two input frames, valid indices are 0 and 1.
 An out-of-range index raises before loader cache or FITS access; an omitted or
