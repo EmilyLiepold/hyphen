@@ -394,7 +394,7 @@ def plot_dewiggle_result(
         fig, axes = plt.subplots(1, 1, figsize=(6.0, 3.75))
         fig2, axes2 = plt.subplots(3, 1, figsize=(6.0, 9.7))
 
-        fig.subplots_adjust(left=0.1, right=0.98, top=0.87, bottom=0.12, hspace=0.0)
+        fig.subplots_adjust(left=0.15, right=0.98, top=0.87, bottom=0.12, hspace=0.0)
         fig2.subplots_adjust(left=0.12, right=0.98, top=0.95, bottom=0.06, hspace=0.1)
 
         axes.set_title(
