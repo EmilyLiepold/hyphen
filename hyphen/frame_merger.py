@@ -196,8 +196,8 @@ def load_frames(
     variances = np.empty(1, dtype=np.float64)
     dqs = np.empty(1, dtype=np.float64)
     weights = np.empty(1, dtype=np.float64)
-    # v2 stores variances; legacy caches stored sums of input ERR.
-    cache_filename = f"{base_fn}_cached_v2.npz"
+    # v3 excludes detector samples with NaN ERR before reduction.
+    cache_filename = f"{base_fn}_cached_v3.npz"
 
     try:
         logger.info("Trying to load arrays from cached arrays")
@@ -260,6 +260,7 @@ def load_frames(
                     temp_variances = np.asarray(
                         [[fh[2].data for fh in frame_hduls]], dtype=np.float32
                     )
+                    missing_err = np.isnan(temp_variances)
                     temp_variances[temp_dqs != 0] = np.nan
                     # Input ERR is standard deviation; sum detector variances.
                     np.square(temp_variances, out=temp_variances)
@@ -268,6 +269,8 @@ def load_frames(
                         [[fh[4].data for fh in weight_hduls]], dtype=np.float32
                     )
                     temp_weights[temp_dqs != 0] = np.nan
+                    temp_fluxes[missing_err] = np.nan
+                    temp_weights[missing_err] = np.nan
 
                     if mask_config is not None:
                         filtered_config = []
@@ -321,7 +324,7 @@ def determine_gap_edges(
 
     try:
         logger.info("Trying to load gap array from cache")
-        gap_edges = np.load(f"{base_fn}_gaps.npy").T
+        gap_edges = np.load(f"{base_fn}_gaps_v3.npy").T
 
     except FileNotFoundError:
         recompute_gaps = True
@@ -349,7 +352,7 @@ def determine_gap_edges(
                     for k in range(weights.shape[3])
                 ]
             )
-            np.save(f"{base_fn}_gaps.npy", gap_edges)
+            np.save(f"{base_fn}_gaps_v3.npy", gap_edges)
             gap_edges = gap_edges.T
         except Exception as e:
             assert False, f"Error {e} in gap calculation"

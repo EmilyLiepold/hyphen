@@ -38,7 +38,7 @@ def test_gap_union_masks_both_inclusive_edges(tmp_path, edges, masked):
         inputs.append([str(path)])
 
     output = tmp_path / "merged.fits"
-    cache = tmp_path / "merged_gaps.npy"
+    cache = tmp_path / "merged_gaps_v3.npy"
     np.save(cache, np.array(edges, dtype=float).reshape(1, 1, 2, 2))
     original_cache = cache.read_bytes()
     frame_merge(inputs, str(output), diagnostic_plot_filename="",
