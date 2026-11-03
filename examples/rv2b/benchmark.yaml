@@ -1,0 +1,54 @@
+# Derived from the rv2b runner and defaults; historical source identity is incomplete.
+# Six workers match a later recorded replay; set a separately agreed run budget.
+# Keep frame-major order and run all four cases in one fresh process.
+# Some fitting defaults remain in the Hyphen code; see README.md.
+input_2d_filename_prototype: data/inputs/detector/jw02228001001_02101_FRAME_DETECTOR_a3001_crf.fits.gz
+input_3d_filename_prototype: data/inputs/cubes/FRAME_DETECTOR_g235h-f170lp_s3d.fits.gz
+output_filename_prototype: generated/FRAME_DETECTOR_g235h-f170lp_s3d_hyphenated.fits.gz
+target_detectors:
+- nrs1
+- nrs2
+target_frames:
+- '00001'
+- '00002'
+plot_filename_prototype: generated/FRAME_DETECTOR_g235h-f170lp_s3d_hyphenated.pdf
+central_pixel:
+- 38
+- 33
+dewiggling_radius: 0.5
+central_reference_spectrum_radius: 0.2
+smooth_model_poly_order: -1
+smooth_model_window: 51
+diagnostic_fraction: 1
+background_reference_spectrum_radii:
+- 1.0
+- 1.5
+fractional_residual_threshold: 0.05
+fit_param_fractional_residual_improvement_threshold: 0.0001
+null_fit_improvement_threshold: -0.1
+n_jobs: 6
+perform_dewiggling: true
+target_radec:
+- 0.0
+- 0.0
+use_cached_wcs: true
+target_wiggly_pixels: []
+mask_bad_fits: false
+slices_to_use:
+- 0
+reference_spectra_percentile_cut: 1
+try_different_slice_threshold: 0.025
+weight_based_masking_threshold: 0.5
+min_fit_params:
+  alpha_order: 0
+  beta_order: 1
+  gamma_order: 0
+  order: 0
+max_fit_params:
+  alpha_order: 2
+  beta_order: 5
+  gamma_order: 2
+  order: 5
+masked_regions: []
+step_type: dewiggle_ifu
+label: benchmark_fiducial_m-1_rv2b_four_cubes
