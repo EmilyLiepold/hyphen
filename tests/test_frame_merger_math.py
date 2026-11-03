@@ -10,9 +10,11 @@ from hyphen.frame_merger import frame_merge
 SHAPE = (4, 2, 3)  # wavelength, slice, pixel
 
 
-def _write_cube(path, flux, sigma, weight):
+def _write_cube(path, flux, sigma, weight, nframes=None):
     primary = fits.PrimaryHDU()
     primary.header.update(DATAMODL="IFUCubeModel", ERREXT="ERR")
+    if nframes is not None:
+        primary.header["NFRAMES"] = (nframes, "Number of frames per group")
     sci = fits.ImageHDU(np.full(SHAPE, flux, dtype=np.float32), name="SCI")
     sci.header.update(BUNIT="MJy/sr", CDELT3=0.01, CRVAL3=1.7, CRPIX3=1.0)
     err = fits.ImageHDU(np.full(SHAPE, sigma, dtype=np.float32), name="ERR")
@@ -22,16 +24,17 @@ def _write_cube(path, flux, sigma, weight):
     fits.HDUList([primary, sci, err, dq, wmap]).writeto(path)
 
 
+@pytest.mark.parametrize("first_nframes", [None, 5], ids=["absent", "five"])
 @pytest.mark.parametrize(
     "sigmas,weights", [((2, 2), (1, 1)), ((2, 4), (1, 3))],
     ids=["equal-weights", "unequal-weights"],
 )
-def test_merger_propagates_independent_standard_deviations(tmp_path, sigmas, weights):
+def test_merger_propagates_independent_standard_deviations(tmp_path, sigmas, weights, first_nframes):
     fluxes = (6, 10)
     filenames = []
     for i, (flux, sigma, weight) in enumerate(zip(fluxes, sigmas, weights)):
         path = tmp_path / f"frame-{i}.fits"
-        _write_cube(path, flux, sigma, weight)
+        _write_cube(path, flux, sigma, weight, first_nframes if i == 0 else None)
         filenames.append([str(path)])
     output = tmp_path / "merged.fits"
     frame_merge(
@@ -44,7 +47,11 @@ def test_merger_propagates_independent_standard_deviations(tmp_path, sigmas, wei
     expected_flux = sum(w * f for w, f in zip(weights, fluxes)) / total_weight
     expected_sigma = sqrt(sum(w**2 * s**2 for w, s in zip(weights, sigmas))) / total_weight
     with fits.open(output) as product:
-        assert product[0].header["NFRAMES"] == 2
+        if first_nframes is None:
+            assert "NFRAMES" not in product[0].header
+        else:
+            assert product[0].header["NFRAMES"] == first_nframes
+            assert product[0].header.comments["NFRAMES"] == "Number of frames per group"
         assert product[0].header["ERREXT"] == "ERR"
         assert product["ERR"].header["ERRTYPE"] == "ERR"
         assert product["SCI"].header["BUNIT"] == "MJy/sr"

@@ -791,9 +791,6 @@ def frame_merge(
     frames[0][0][2].data = variances[:]
     frames[0][0][4].data = weights[:]
 
-    # Update the header
-    frames[0][0][0].header["NFRAMES"] = len(fnss)
-
     # Write the file
     frames[0][0].writeto(out_fn, overwrite=True)
 

@@ -11,6 +11,8 @@ Replace literal `DATA_ROOT` with their absolute folder; it is not an environment
 Data are not bundled or publicly hosted here. Do not use SCI extracts or uncorrected cubes.
 Inputs must share shape and aligned spatial/wavelength grids; no resampling occurs.
 HDU positions 1–4 must be SCI, ERR, DQ, WMAP, with consistent units and metadata.
+The output retains the first input's NFRAMES value and comment, if present; if
+absent, it remains absent. The merger does not check agreement across inputs.
 Inspect detector overlap: detector arrays sum before exposure averaging.
 In direct Python `mask_config`, `frame_idx` is a zero-based input-frame index:
 for two input frames, valid indices are 0 and 1.
