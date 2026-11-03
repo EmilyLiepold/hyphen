@@ -40,6 +40,9 @@ mkdir outputs/merge-01 && hyphenate merge.local.yaml
 
 If `outputs/merge-01` already exists, `mkdir` fails and `&&` prevents Hyphen
 from starting. Choose a fresh directory and update the YAML output paths.
+The guard checks only the literal directory in the `mkdir` command. If you edit
+`output_filename`, change that command to the same fresh directory; separately
+check any diagnostic plot path for existing files.
 
 Use a new directory/basename each run: outputs/logs overwrite and caches lack full
 input provenance. A warning is logged when cached frame arrays or gap edges are
