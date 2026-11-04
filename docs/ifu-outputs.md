@@ -75,6 +75,14 @@ and interpolation onto a fine detector grid;
 frequency is cycles per detector pixel. A low residual peak alone does not prove
 preservation of real spectral features; empty/zero transforms need separate review.
 
+The interpolation grid starts at the minimum selected detector coordinate and
+extends in whole 100-detector-pixel periods. Where it exceeds the highest selected
+coordinate, interpolation holds the last input and residual values constant. This
+is a derived continuation, not zero-padding or additional measurements. The
+inclusive grid does not guarantee exactly 0.01 cycles/pixel between FFT bins.
+The IFU quality check uses the returned residual FFT even when plotting is off;
+with bad-fit masking enabled, that check can trigger retries or masking.
+
 ## Saved fits and replay
 
 For an initial IFU fit writing `name.fits.gz`, expect `name.pkl.gz.npz` and
