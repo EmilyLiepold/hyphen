@@ -56,5 +56,8 @@ publication are still pending.
 - Python >=3.12 is a syntax floor, not a tested compatibility matrix. Earlier
   dependency-complete installation evidence covers one CPython 3.13.11/macOS arm64
   stack on an earlier source; final-candidate installation remains to be checked.
-- Benchmark data access, final reference products and a clean-user walkthrough
-  remain to be finalized. File presence or a completion message is not science acceptance.
+- The four corrected ae2cc4 release-preparation cubes are the selected 1.0
+  regression references; contact the authors for data access and sharing
+  conditions. Hosting, redistribution rights, final distribution and a full
+  clean-user walkthrough remain open. File presence or a completion message
+  is not science acceptance.

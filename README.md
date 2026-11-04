@@ -32,8 +32,9 @@ dependencies. Package metadata specifies Python 3.12 or newer as a syntax
 floor, not a tested compatibility range. An earlier dependency-complete sdist
 installation smoke passed on CPython 3.13.11/macOS 26.2 arm64; it used an earlier
 development snapshot plus PyYAML, not the final candidate. Other Python and
-platform combinations remain unverified. The license, citation and data
-redistribution terms remain pending.
+platform combinations remain unverified. Hyphen uses the [BSD 3-Clause license](LICENSE),
+with copyright 2026 Emily Liepold. Citation and data redistribution terms remain
+pending.
 
 ## First IFU run
 
