@@ -54,8 +54,9 @@ mkdir outputs/run-01 && hyphenate ifu.local.yaml
 Paths in the YAML resolve from the directory where the command runs. Choose a
 fresh output directory and use the same path in the YAML; files and logs can be
 overwritten. With the template's frame, detector and output names unchanged,
-expect `outputs/run-01/00001_nrs1_hyphenated` with `.fits.gz`, `.log`, `.pdf`,
-`.pkl.gz.npz` and `.pkl.gz.json` suffixes. Inspect the log, coverage and spectra;
+expect files with the prefix `outputs/run-01/00001_nrs1_hyphenated` and suffixes
+`.fits.gz`, `.log`, `.pdf`, `.pkl.gz.npz` and `.pkl.gz.json`. Inspect the log,
+coverage and spectra;
 the existence of these products does not establish fit quality or preservation
 of real features. The illustrative settings need review for your target.
 
