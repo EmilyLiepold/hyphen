@@ -18,12 +18,12 @@ The commands below use a POSIX shell and a `python3.13` executable with `venv`
 support; use the appropriate interpreter command for your environment.
 
 ```sh
-git clone https://github.com/EmilyLiepold/hyphen.git
-cd hyphen
-git checkout v1.0.0
-python3.13 -m venv .venv
-. .venv/bin/activate
-python -m pip install .
+git clone https://github.com/EmilyLiepold/hyphen.git &&
+cd hyphen &&
+git checkout v1.0.0 &&
+python3.13 -m venv .venv &&
+. .venv/bin/activate &&
+python -m pip install . &&
 hyphenate --help
 ```
 
