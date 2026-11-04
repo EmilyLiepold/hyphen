@@ -4,7 +4,7 @@ permissions:
   contents: read
 jobs:
   install:
-    # Installation target to validate; this does not test numerical correctness.
+    # Synthetic tests supplement installation checks, not science validation.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -36,6 +36,44 @@ jobs:
             "$venv/bin/python" -I -c 'import hyphen, sys; from pathlib import Path; p = Path(hyphen.__file__).resolve(); print(p); assert p.is_relative_to(Path(sys.prefix).resolve())'
             "$venv/bin/hyphenate" --help
           done
+      - name: Run focused tests against the installed wheel
+        working-directory: ${{ runner.temp }}
+        shell: bash
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          shopt -s nullglob
+          wheels=("$GITHUB_WORKSPACE"/dist/*.whl)
+          if (( ${#wheels[@]} != 1 )); then
+            echo "Expected exactly one built wheel" >&2
+            exit 1
+          fi
+          venv="$RUNNER_TEMP/$(basename "${wheels[0]}").venv"
+          scratch="$(mktemp -d "$RUNNER_TEMP/hyphen-focused.XXXXXX")"
+          for test in test_config.py test_ifu_centering.py test_ifu_orchestration.py test_frame_merger_math.py; do
+            test -f "$GITHUB_WORKSPACE/tests/$test"
+            cp "$GITHUB_WORKSPACE/tests/$test" "$scratch/$test"
+          done
+          "$venv/bin/python" -I -m pip install pytest
+          "$venv/bin/python" -I -m pip check
+          "$venv/bin/python" -I -m pip freeze --all > "$GITHUB_WORKSPACE/dist/focused-tests.requirements.txt"
+          cd "$scratch"
+          "$venv/bin/python" -I - <<'PY'
+          import sys
+          from pathlib import Path
+          import hyphen
+          import pytest
+
+          origin = Path(hyphen.__file__).resolve()
+          print(f"Testing installed package: {origin}", flush=True)
+          if not origin.is_relative_to(Path(sys.prefix).resolve()):
+              raise RuntimeError(f"Package is outside the wheel environment: {origin}")
+          raise SystemExit(pytest.main([
+              "--import-mode=importlib", "-q", "-p", "no:cacheprovider",
+              "test_config.py", "test_ifu_centering.py", "test_ifu_orchestration.py",
+              "test_frame_merger_math.py",
+          ]))
+          PY
       - name: Retain distributions and installation records
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
