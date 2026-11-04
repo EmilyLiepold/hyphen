@@ -1,9 +1,9 @@
 # Changelog
 
-## 1.0.0 — planned, unreleased
+## 1.0.0
 
 These notes describe the selected 1.0 changes. Final release validation and
-publication are still pending.
+publication remain separate decisions.
 
 **Workflows and configuration**
 
@@ -53,9 +53,9 @@ publication are still pending.
 - Saved fits and PDFs retain the initial pass and may differ from final SCI after
   retries. Sidecars do not authenticate inputs or the NPZ/JSON pair; load only
   trusted files. Replay still writes products and can refit when retries are enabled.
-- Python >=3.12 is a syntax floor, not a tested compatibility matrix. Earlier
-  dependency-complete installation evidence covers one CPython 3.13.11/macOS arm64
-  stack on an earlier source; final-candidate installation remains to be checked.
+- Python >=3.12 is a syntax floor, not a tested compatibility matrix. An earlier 1.0
+  candidate wheel and source distribution were installed with dependencies and
+  smoke-checked on CPython 3.13.11/macOS 26.2 arm64.
 - The four corrected ae2cc4 release-preparation cubes are the selected 1.0
   regression references; contact the authors for data access and sharing
   conditions. Hosting, redistribution rights, final distribution and a full
