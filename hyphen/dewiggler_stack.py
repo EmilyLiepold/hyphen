@@ -1151,7 +1151,7 @@ def build_reference_spectra_plot(
     axes[2].set_ylim(yrange[0] * 0.9, yrange[1] * 1.1)
     axes[2].legend(fontsize=6)
     axes[2].set_xlabel(f"Wavelength ({wave_unit})")
-    axes[2].set_ylabel("Background / Central\n(Flux, arbitrary)")
+    axes[2].set_ylabel("Background / Central\n(dimensionless)")
 
     fig.subplots_adjust(left=0.15, right=0.98, top=0.92, bottom=0.07, hspace=0.20)
     if isinstance(plot, PdfPages):
