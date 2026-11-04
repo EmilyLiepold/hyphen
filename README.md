@@ -1,13 +1,13 @@
 # hyphen
 
 Hyphen fits and removes spectral wiggles from JWST/NIRSpec data using detector
-trace geometry and reference spectra, and combines corrected cubes.
-Single and batch IFU processing and frame merging are the intended supported
+trace geometry, and combines corrected cubes.
+Single and batch IFU processing and frame merging are the intended
 workflows; MSA processing is experimental.
 
 ## Install from a checkout
 
-Obtain a checkout with the necessary access. The checkout command below requires
+The checkout command below requires
 the `v1.0.0` tag; if it is unavailable, replace it with an approved commit. This
 complete installation recipe has not yet been executed against the final release
 candidate.
@@ -36,8 +36,7 @@ pending.
 
 ## First IFU run
 
-This example is **unexecuted** against the final candidate. Supply complete,
-matched calibrated detector CRF and rectified s3d cube FITS for the same
+Supply pairs of detector 2D frames and rectified 3D cube FITS for the same
 exposure and detector, including their WCS/ASDF, DQ and coverage extensions.
 No example data are bundled. From the checkout root, copy the template and edit
 the input paths, center and all data-dependent science settings before running:
@@ -54,9 +53,7 @@ fresh output directory and use the same path in the YAML; files and logs can be
 overwritten. With the template's frame, detector and output names unchanged,
 expect files with the prefix `outputs/run-01/00001_nrs1_hyphenated` and suffixes
 `.fits.gz`, `.log`, `.pdf`, `.pkl.gz.npz` and `.pkl.gz.json`. Inspect the log,
-coverage and spectra;
-the existence of these products does not establish fit quality or preservation
-of real features. The illustrative settings need review for your target.
+coverage and spectra and appropriately tune settings to refine the fits.
 
 See the [single-IFU guide](docs/ifu-single.md), [batch-IFU guide](docs/ifu-batch.md),
 [configuration reference](docs/configuration.md) and [output guide](docs/ifu-outputs.md)
