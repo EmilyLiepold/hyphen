@@ -7,10 +7,8 @@ workflows; MSA processing is experimental.
 
 ## Install from a checkout
 
-The repository is currently private. Obtain a checkout with the necessary
-access. The following HTTPS clone is a proposed release instruction; anonymous
-access will depend on the repository becoming public. The planned `v1.0.0` tag
-has not yet been created; before release, use an approved commit instead. This
+Obtain a checkout with the necessary access. The checkout command below requires
+the `v1.0.0` tag; if it is unavailable, replace it with an approved commit. This
 complete installation recipe has not yet been executed against the final release
 candidate.
 
@@ -29,10 +27,10 @@ hyphenate --help
 
 This requires Git, Python, pip and access to the package's build and runtime
 dependencies. Package metadata specifies Python 3.12 or newer as a syntax
-floor, not a tested compatibility range. An earlier dependency-complete sdist
-installation smoke passed on CPython 3.13.11/macOS 26.2 arm64; it used an earlier
-development snapshot plus PyYAML, not the final candidate. Other Python and
-platform combinations remain unverified. Hyphen uses the [BSD 3-Clause license](LICENSE),
+floor, not a tested compatibility range. An earlier 1.0 candidate wheel and
+source distribution were installed with dependencies and smoke-checked on CPython
+3.13.11/macOS 26.2 arm64. These checks describe one observed environment, not a
+tested compatibility range. Hyphen uses the [BSD 3-Clause license](LICENSE),
 with copyright 2026 Emily Liepold. Citation and data redistribution terms remain
 pending.
 
