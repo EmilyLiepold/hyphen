@@ -385,8 +385,8 @@ def plot_dewiggle_result(
 
     lambda_space_xlim = (np.min(lam[good_indices]), np.max(lam[good_indices]))
     x_space_xlim = (np.max(x_vals), np.min(x_vals))
-    low_x = int(np.floor(x_space_xlim[0]))
-    high_x = int(np.ceil(x_space_xlim[1]))
+    low_x = int(np.ceil(x_space_xlim[1]))
+    high_x = int(np.floor(x_space_xlim[0])) + 1
 
     should_close = reusable_artists is None
 
