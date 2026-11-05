@@ -1,5 +1,6 @@
 # hyphen
 
+**Note: Documentation for the public version of hyphen is very much in progress and actively under construction. If you have questions or would like help using hyphen, please contact [emilyliepold@berkeley.edu](mailto:emilyliepold@berkeley.edu)**
 Hyphen fits and removes spectral wiggles from JWST/NIRSpec data using detector
 trace geometry, and combines corrected cubes.
 Single and batch IFU processing and frame merging are the intended
